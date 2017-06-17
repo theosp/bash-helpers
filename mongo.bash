@@ -1,0 +1,12 @@
+#!/bin/bash
+
+# For now, implemented only for dbs with no auth
+# MONGODB_USERNAME="${MONGODB_USERNAME:-}"
+# MONGODB_PASSWORD="${MONGODB_PASSWORD:-}"
+MONGODB_HOST="${MONGODB_HOST:-127.0.0.1}"
+MONGODB_PORT="${MONGODB_PORT:-3001}"
+MONGODB_COLLECTION="${MONGODB_COLLECTION:-meteor}"
+
+mongoExecute () {
+    mongo "$MONGODB_HOST:$MONGODB_PORT/$MONGODB_COLLECTION"
+}
