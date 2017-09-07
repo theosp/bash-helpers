@@ -29,3 +29,51 @@ platformXargs () {
 
     "$xargs" "$@"   
 }
+
+platformSed () {
+    # Prefer gsed over sed - installed by $ brew install gnu-sed
+
+    local sed="sed"
+
+    if commandExists gsed; then
+        sed="gsed"
+    fi
+
+    "$sed" "$@"   
+}
+
+platformTar () {
+    # Prefer gtar over tar - installed by $ brew install gnu-tar
+
+    local tar="tar"
+
+    if commandExists gtar; then
+        tar="gtar"
+    fi
+
+    "$tar" "$@"   
+}
+
+platformCp () {
+    # Prefer gcp over cp
+
+    local cp="cp"
+
+    if commandExists gcp; then
+        cp="gcp"
+    fi
+
+    "$cp" "$@"
+}
+
+platformGrep () {
+    # Prefer ggrep over grep
+
+    local grep="grep"
+
+    if commandExists ggrep; then
+        grep="ggrep"
+    fi
+
+    "$grep" "$@"
+}
