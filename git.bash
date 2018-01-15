@@ -30,3 +30,7 @@ gitCheckoutMasterRec () {
 
     popd
 }
+
+getCurrentGitBranch () {
+    git branch | grep '*' | awk '{print $2}'
+}
