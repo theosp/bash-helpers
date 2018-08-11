@@ -55,7 +55,12 @@ cacheManager () {
         return "${CACHE_MANAGER_RETURN_CODES["DISABLED"]}"
     fi
 
-    local cachefile_name=$(echo "$key" | sha256sum | awk '{print $1}')
+    if which shasum &> /dev/null; then
+        local cachefile_name=$(echo "$key" | shasum -a 256 | awk '{print $1}')
+    else
+        local cachefile_name=$(echo "$key" | sha256sum | awk '{print $1}')
+    fi
+
     local cachefile_path="$CACHE_DIR_PATH/$cachefile_name"
 
     # Output file path
@@ -63,6 +68,11 @@ cacheManager () {
 
     if [[ ! -e "$cachefile_path" ]]; then
         local index_file_path="$CACHE_DIR_PATH/000-INDEX"
+
+        if [[ ! -e "$index_file_path" ]]; then
+            # If no index file, likely that we don't have cache dir either
+            mkdir -p "$CACHE_DIR_PATH"
+        fi
 
         # When we don't find the file, we assume we never created it,
         # add a line to $index_file_path

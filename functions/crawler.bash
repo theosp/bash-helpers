@@ -37,5 +37,5 @@ crawlerGetPage () {
 crawlerGetAllPageLinks () {
     local url="$1"
 
-    cat <<< "$(crawlerGetPage "$url")" | sed -n '/References/,$p' | tail -n +3 | awk '{print $2}'
+    cat <<< "$(crawlerGetPage "$url")" | platformSed -n '/References/,$p' | tail -n +3 | awk '{print $2}'
 }
