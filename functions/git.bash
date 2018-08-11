@@ -34,3 +34,7 @@ gitCheckoutMasterRec () {
 getCurrentGitBranch () {
     git branch | grep '*' | awk '{print $2}'
 }
+
+getLastFileModification () {
+    git log -1 --format="%ai" "$1"
+}
