@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 dockerRemoveUntaggedImages () {
     docker images -q --filter "dangling=true" | platformXargs -n1 -r docker rmi

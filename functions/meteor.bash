@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 getPackageFullName () {
   local package_path="$1"

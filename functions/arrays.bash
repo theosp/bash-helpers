@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 inArray () {
     # inArray(array_name, needle)
     local -n arr="$1"

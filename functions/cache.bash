@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 USE_CACHE="${USE_CACHE:-"true"}"
 CACHE_DIR_PATH="${CACHE_DIR_PATH:-"cache"}"

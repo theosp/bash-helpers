@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 gitCheckoutMasterRec () {
     rep_path="$1"
 

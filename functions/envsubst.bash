@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 inplaceEnvsubst () {
     # inplaceEnvsubst(source_file[, vars_to_replace])

@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # The following commands makes sure that we are using the correct commands
 # available on the platform we are running on.

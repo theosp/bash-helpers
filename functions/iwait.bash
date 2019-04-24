@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # https://github.com/theosp/osp-dist/blob/master/sys-root/home/theosp/.bash/alias/iwait.sh
 

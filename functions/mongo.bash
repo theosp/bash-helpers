@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # For now, implemented only for dbs with no auth
 # MONGODB_USERNAME="${MONGODB_USERNAME:-}"

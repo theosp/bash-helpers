@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 csvVals () {
     # Print the values of the given csv string

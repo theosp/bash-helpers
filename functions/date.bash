@@ -1,3 +1,5 @@
+#!/usr/bin/env bash
+
 getUnicodeDateTime () {
     date +%Y-%m-%d--%H:%M
 }
