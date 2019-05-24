@@ -10,3 +10,7 @@ dockerQuietStopRemove () {
     docker stop "$container" &> /dev/null
     docker rm "$container" &> /dev/null   
 }
+
+isDockerRunning () {
+    docker ps &> /dev/null
+}
