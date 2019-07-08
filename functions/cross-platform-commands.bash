@@ -54,6 +54,18 @@ platformTar () {
     "$tar" "$@"   
 }
 
+platformDu () {
+    # Prefer gdu over du
+
+    local du="du"
+
+    if commandExists gcp; then
+        du="gdu"
+    fi
+
+    "$du" "$@"
+}
+
 platformCp () {
     # Prefer gcp over cp
 
