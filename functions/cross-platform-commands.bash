@@ -66,6 +66,18 @@ platformDu () {
     "$du" "$@"
 }
 
+platformTr () {
+    # Prefer gcp over cp
+
+    local tr="tr"
+
+    if commandExists gtr; then
+        tr="gtr"
+    fi
+
+    "$tr" "$@"
+}
+
 platformCp () {
     # Prefer gcp over cp
 
