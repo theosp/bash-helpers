@@ -21,5 +21,5 @@ announceError () {
 announceErrorAndExit () {
     announceError $@
 
-    exit
+    exit 1
 }
