@@ -53,3 +53,7 @@ getCurrentGitBranch () {
 getLastFileModification () {
     git log -1 --format="%ai" "$1"
 }
+
+isCleanGitRep () {
+    [ -z "$(git status --porcelain)" ]
+}
