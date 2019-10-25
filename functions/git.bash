@@ -57,3 +57,7 @@ getLastFileModification () {
 isCleanGitRep () {
     [ -z "$(git status --porcelain)" ]
 }
+
+getContributersEmailsByCommitsCount () {
+    git log | grep 'Author:' | sed -e 's/Author: .*<\(.*\)>/\1/' | sort | uniq -c | sort -r
+}
