@@ -4,17 +4,14 @@ USE_CACHE="${USE_CACHE:-"true"}"
 CACHE_TARGET="${CACHE_TARGET:-"cache/crawler"}"
 CACHE_TIMEOUT_SECS="${CACHE_TIMEOUT_SECS:-$((60 * 60 * 24))}" # 24 hours
 LYNX_USER_AGENT="${LYNX_USER_AGENT:-"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/92.0.4515.131 Safari/537.36"}"
-CHROME_USER_AGENT="${CHROME_USER_AGENT:-"Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/94.0.4606.71 Safari/537.36"}"
-RATE_LIMITER_SLEEP_TIME="${RATE_LIMITER_SLEEP_TIME:-"10"}"
 USE_HEADLESS_CHROME="${USE_HEADLESS_CHROME:-"true"}"
-HEADLESS_CHROME_COMMAND="${HEADLESS_CHROME_COMMAND:-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"}"
 
 crawlerGetPage () {
     local url="$1"
 
     local fetch_page_command
     if [[ "$USE_HEADLESS_CHROME" == "true" ]]; then
-        fetch_page_command=("$HEADLESS_CHROME_COMMAND" "--headless" "--incognito" "--disable-gpu" "--dump-dom" "--user-agent=$CHROME_USER_AGENT" "$url")
+        fetch_page_command=(headlessChrome "$url")
         lynx_parser=(lynx -stdin -dump -hiddenlinks=listonly)
     else
         fetch_page_command=(lynx -useragent="$LYNX_USER_AGENT" -dump -hiddenlinks=listonly "$url")
@@ -47,17 +44,15 @@ crawlerGetPage () {
         # echo "Cache is disabled"
 
         echo "$output"
-
-        sleep "$RATE_LIMITER_SLEEP_TIME"
     elif [[ "$cache_return_code" == "${CACHE_MANAGER_RETURN_CODES["NOT_FOUND_OR_EXPIRED"]}" ]]; then
         # echo "Not found or expired"
 
         cat > "$content_cache_path" <<< "$output"
 
         cat "$content_cache_path"
-
-        sleep "$RATE_LIMITER_SLEEP_TIME"
     fi
+
+    rateLimitter
 }
 
 crawlerGetAllPageLinks () {
