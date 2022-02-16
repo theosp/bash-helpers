@@ -101,3 +101,27 @@ platformGrep () {
 
     "$grep" "$@"
 }
+
+platformStat () {
+    # Prefer gstat over stat
+
+    local stat="stat"
+
+    if commandExists gstat; then
+        stat="gstat"
+    fi
+
+    "$stat" "$@"
+}
+
+platformDd () {
+    # Prefer gdd over dd
+
+    local dd="dd"
+
+    if commandExists gdd; then
+        dd="gdd"
+    fi
+
+    "$dd" "$@"
+}
