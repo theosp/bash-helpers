@@ -125,3 +125,15 @@ platformDd () {
 
     "$dd" "$@"
 }
+
+platformFind () {
+    # Prefer gfind over find
+
+    local find="find"
+
+    if commandExists gfind; then
+        find="gfind"
+    fi
+
+    "$find" "$@"
+}
