@@ -1,13 +1,18 @@
 #!/usr/bin/env bash
 
-ensureNvmExists () {
+ensureNvmExistsAndLoaded () {
   # Check if nvm is installed and install it if not
-  # Since nvm is a shell script instead of an executable, it's normal if a user has nvm installed in zsh and see this message (since the script is running in bash)
-  # Run "which nvm" to see the how it's done
   if ! commandExists nvm; then
-      announceStep "Ensuring nvm exists"
-      curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash 
-      
+      # Install if needed
+      if [[ ! -f "$HOME/.nvm/nvm.sh" ]]; then
+          announceStep "nvm is not installed. Attempting to install it..."
+          curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.7/install.sh | bash
+      fi
+
+      # Load nvm (note happens not only when nvm is installed but also when it is already installed but not loaded)
+      #
+      # It is common that when running the script not inside an interactive shell, the nvm command will be installed
+      # but not loaded.
       export NVM_DIR="$HOME/.nvm"
       [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh"  # This loads nvm
       [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion"  # This loads nvm bash_completion
@@ -15,7 +20,7 @@ ensureNvmExists () {
 }
 
 requireNodeJsVersion () {
-  ensureNvmExists
+  ensureNvmExistsAndLoaded
 
   # Install & use the required NodeJS version
   node_version="$(node -v)"
@@ -27,6 +32,14 @@ requireNodeJsVersion () {
       if [[ "$?" != 0 ]]; then
           announceStep "Failed to switch to $required_node_version. Attempting to install..."
           nvm install "$required_node_version"
+
+          if [[ "$?" == 0 ]]; then
+              announceStep "Successfully installed $required_node_version. Switching to it..."
+              nvm use "$required_node_version"
+          else
+              announceStep "Failed to install $required_node_version. Exiting..."
+              exit 1
+          fi
       fi
   fi
 }
