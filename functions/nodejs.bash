@@ -26,9 +26,9 @@ requireNodeJsVersion () {
   node_version="$(node -v)"
   required_node_version="$1"
   if isVersionHigher "$node_version" "$required_node_version"; then
-      announceStep "This script require node version $required_node_version or higher. You have $node_version."
-      announceStep "Attempting to switch to $required_node_version..."
+      announceStep "Setting nvm to use node version: $required_node_version"
       nvm use "$required_node_version"
+      announceStep "Successfully switched to node version: $required_node_version"
       if [[ "$?" != 0 ]]; then
           announceStep "Failed to switch to $required_node_version. Attempting to install..."
           nvm install "$required_node_version"
