@@ -137,3 +137,16 @@ platformFind () {
 
     "$find" "$@"
 }
+
+platformDate () {
+    # Prefer gdate over date
+
+    local date="date"
+
+    if commandExists gdate; then
+        date="gdate"
+    fi
+
+    "$date" "$@"
+}
+
