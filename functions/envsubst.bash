@@ -40,12 +40,13 @@ recursiveEnvsubst () {
 
     cp -r "$source_dir" "$destination_dir"
 
-
-    template_filler_command='envsubst '
-    if [ -n "$vars_to_replace" ]; then
-        template_filler_command+="'"$vars_to_replace"' "
-    fi
-    template_filler_command+='< % > %-output; mv %-output %'
-
-    find "$destination_dir" -type f -print0 | platformXargs -0 -I % /bin/bash -c "$template_filler_command"
+    # Process each file individually to avoid xargs command line length limitations
+    while IFS= read -r -d '' file; do
+        if [ -n "$vars_to_replace" ]; then
+            envsubst "$vars_to_replace" < "$file" > "${file}-output"
+        else
+            envsubst < "$file" > "${file}-output"
+        fi
+        mv "${file}-output" "$file"
+    done < <(find "$destination_dir" -type f -print0)
 }
