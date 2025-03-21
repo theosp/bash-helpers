@@ -48,8 +48,6 @@ isVersionHigher () {
 requireMinimumBashVersion() {
   local required_version="$1"
 
-  echo "$required_version"
-  
   if [ "${BASH_VERSINFO[0]}" -lt "$required_version" ]; then
     echo "This script requires Bash $required_version or later"
     echo "Current version: $BASH_VERSION"
