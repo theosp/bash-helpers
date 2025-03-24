@@ -45,18 +45,6 @@ isVersionHigher () {
     return 1
 }
 
-requireMinimumBashVersion() {
-  local required_version="$1"
-
-  if [ "${BASH_VERSINFO[0]}" -lt "$required_version" ]; then
-    echo "This script requires Bash $required_version or later"
-    echo "Current version: $BASH_VERSION"
-    echo "Try running with Bash $required_version+"
-    exit 1
-  fi
-  return 0
-}
-
 # More comprehensive bash version check that allows specifying both major and minor version
 # Usage: requireBashVersion 4 3  # Requires bash 4.3+
 # Returns: 0 if requirements met, exits with error otherwise
@@ -91,4 +79,16 @@ requireBashVersion() {
   fi
   
   return 0
+}
+
+# Simplified version check that only checks major version
+# Implementation now uses requireBashVersion internally for DRY principle
+# Usage: requireMinimumBashVersion 5  # Requires bash 5.0+
+# Returns: 0 if requirements met, exits with error otherwise
+requireMinimumBashVersion() {
+  local required_version="$1"
+
+  # Call the more comprehensive function with minor version 0
+  requireBashVersion "$required_version" 0
+  return $?
 }
