@@ -46,9 +46,9 @@ isVersionHigher () {
 }
 
 # More comprehensive bash version check that allows specifying both major and minor version
-# Usage: requireBashVersion 4 3  # Requires bash 4.3+
+# Usage: requireMinimumBashVersion 4 3  # Requires bash 4.3+
 # Returns: 0 if requirements met, exits with error otherwise
-requireBashVersion() {
+requireMinimumBashVersion() {
   local required_major="$1"
   local required_minor="${2:-0}"  # Default to 0 if not specified
   local help_user="${3:-true}"    # Whether to provide help for upgrading
@@ -79,16 +79,4 @@ requireBashVersion() {
   fi
   
   return 0
-}
-
-# Simplified version check that only checks major version
-# Implementation now uses requireBashVersion internally for DRY principle
-# Usage: requireMinimumBashVersion 5  # Requires bash 5.0+
-# Returns: 0 if requirements met, exits with error otherwise
-requireMinimumBashVersion() {
-  local required_version="$1"
-
-  # Call the more comprehensive function with minor version 0
-  requireBashVersion "$required_version" 0
-  return $?
 }
