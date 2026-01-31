@@ -2,30 +2,27 @@
 
 # Based on the bupler lib
 
+# Helper: returns 0 (true) if color output is enabled
+style._colorEnabled ()
+{
+    [[ "${NO_COLOR:-}" != "1" && "${NO_COLOR:-}" != "true" ]]
+}
+
 style.bold ()
 {
-    if ! $NO_COLOR; then
-        tput bold
-    fi
-
+    style._colorEnabled && tput bold
     return 0
 }
 
 style.fcolor ()
 {
-    if ! $NO_COLOR; then
-        tput setaf "$1"
-    fi
-
+    style._colorEnabled && tput setaf "$1"
     return 0
 }
 
 style.bcolor ()
 {
-    if ! $NO_COLOR; then
-        tput setab "$1"
-    fi
-
+    style._colorEnabled && tput setab "$1"
     return 0
 }
 
@@ -46,9 +43,7 @@ style.importantInfo ()
 
 style.reset ()
 {
-    if ! $NO_COLOR; then
-        tput sgr0
-    fi
+    style._colorEnabled && tput sgr0
 }
 
 # vim:ft=bash:
