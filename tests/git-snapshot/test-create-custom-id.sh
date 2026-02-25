@@ -17,7 +17,7 @@ create_output="$(cd "${root_repo}" && git_snapshot_test_cmd create "${custom_sna
 created_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${create_output}")"
 
 assert_eq "${custom_snapshot_id}" "${created_id}" "explicit snapshot id should be preserved"
-assert_file_exists "${snapshot_root}/snapshots/${custom_snapshot_id}/meta.env" "snapshot should be created under explicit id"
+assert_file_exists "${snapshot_root}/${custom_snapshot_id}/meta.env" "snapshot should be created under explicit id"
 
 show_output="$(cd "${root_repo}" && git_snapshot_test_cmd show "${custom_snapshot_id}")"
 assert_contains "snapshot_id=${custom_snapshot_id}" "${show_output}" "show should resolve explicit snapshot id"

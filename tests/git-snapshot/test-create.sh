@@ -38,7 +38,7 @@ assert_contains "modules/sub1/modules/sub2" "${dirty_output}" "dirty list should
 )
 
 snapshot_root="$(git_snapshot_test_snapshot_root_for_repo "${root_repo}")"
-assert_file_exists "${snapshot_root}/snapshots" "snapshot directory should exist"
+assert_file_exists "${snapshot_root}" "snapshot root directory should exist"
 
-snapshot_count="$(find "${snapshot_root}/snapshots" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
+snapshot_count="$(find "${snapshot_root}" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
 assert_eq "1" "${snapshot_count}" "one snapshot should be created"

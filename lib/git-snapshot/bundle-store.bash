@@ -8,14 +8,9 @@ _git_snapshot_store_root_for_repo() {
   printf "%s/git-snapshots/%s\n" "${HOME}" "${repo_name}"
 }
 
-_git_snapshot_store_snapshots_dir() {
-  local root_repo="$1"
-  printf "%s/snapshots\n" "$(_git_snapshot_store_root_for_repo "${root_repo}")"
-}
-
 _git_snapshot_store_ensure_dirs() {
   local root_repo="$1"
-  mkdir -p "$(_git_snapshot_store_snapshots_dir "${root_repo}")"
+  mkdir -p "$(_git_snapshot_store_root_for_repo "${root_repo}")"
 }
 
 _git_snapshot_store_new_snapshot_id() {
@@ -30,7 +25,7 @@ _git_snapshot_store_snapshot_path() {
   local root_repo="$1"
   local snapshot_id="$2"
 
-  printf "%s/%s\n" "$(_git_snapshot_store_snapshots_dir "${root_repo}")" "${snapshot_id}"
+  printf "%s/%s\n" "$(_git_snapshot_store_root_for_repo "${root_repo}")" "${snapshot_id}"
 }
 
 _git_snapshot_store_assert_snapshot_exists() {
@@ -47,14 +42,14 @@ _git_snapshot_store_assert_snapshot_exists() {
 
 _git_snapshot_store_list_snapshot_ids() {
   local root_repo="$1"
-  local snapshots_dir
+  local snapshots_root
 
-  snapshots_dir="$(_git_snapshot_store_snapshots_dir "${root_repo}")"
-  if [[ ! -d "${snapshots_dir}" ]]; then
+  snapshots_root="$(_git_snapshot_store_root_for_repo "${root_repo}")"
+  if [[ ! -d "${snapshots_root}" ]]; then
     return 0
   fi
 
-  find "${snapshots_dir}" -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null | xargs -n1 basename | sort
+  find "${snapshots_root}" -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null | xargs -n1 basename | sort
 }
 
 _git_snapshot_store_write_snapshot_meta() {

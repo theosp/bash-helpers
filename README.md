@@ -18,7 +18,7 @@ This submodule includes reusable shell utilities and CLIs.
 - Snapshot exactness targets tracked + untracked non-ignored files.
 
 ### Storage
-- Default storage path: `~/git-snapshots/<root-most-repo-name>/snapshots/<snapshot_id>`
+- Default storage path: `~/git-snapshots/<root-most-repo-name>/<snapshot_id>`
 
 ### Safety
 - Optional hard safety guard: `GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX=<path>`
