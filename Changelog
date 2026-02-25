@@ -1,3 +1,14 @@
+v1.0.1 (2026-02-25)
+
+* Fix `git-snapshot create <snapshot_id>` to preserve the explicit snapshot id
+  instead of always generating an auto id.
+
+* Add snapshot id validation for `create`, `show`, `restore`, and `delete`
+  (reject empty, path-like, or invalid-character ids).
+
+* Add regression coverage for explicit snapshot ids, duplicate-id rejection,
+  and invalid-id rejection.
+
 v1.0.0 (2026-02-25)
 
 * Add `git-snapshot` CLI with root-most repo discovery, scoped safety guard,
