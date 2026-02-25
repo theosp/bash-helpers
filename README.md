@@ -1,37 +1,245 @@
 # bash-helpers
 
-This submodule includes reusable shell utilities and CLIs.
+Reusable shell CLIs and helper libraries.
 
 ## `git-snapshot`
 
-`bin/git-snapshot` captures and restores git working-tree snapshots for a root-most superproject and its initialized recursive submodules.
+`bin/git-snapshot` captures and restores Git working-tree state for a root-most
+superproject and all initialized recursive submodules.
 
-### Commands
-- `git-snapshot create`
-- `git-snapshot list`
-- `git-snapshot show <snapshot_id>`
-- `git-snapshot restore <snapshot_id>`
-- `git-snapshot delete <snapshot_id>`
+This tool is designed for fast local safety checkpoints before risky work
+(rebase, migration, large refactors, bulk file operations).
 
-### Snapshot Scope
-- Scope is always resolved to the root-most superproject from the current PWD.
-- Snapshot exactness targets tracked + untracked non-ignored files.
+### Quick Start
 
-### Storage
-- Default storage path: `~/git-snapshots/<root-most-repo-name>/<snapshot_id>`
+```bash
+# 1) Create a snapshot (prints snapshot id on last output line)
+git-snapshot create before-rebase
 
-### Safety
-- Optional hard safety guard: `GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX=<path>`
-  - If set, `git-snapshot` aborts unless resolved root-most repo is inside this prefix.
-- Restore requires typed confirmation (`RESTORE`) unless
-  `GIT_SNAPSHOT_CONFIRM_RESTORE=RESTORE` is provided.
-- Restore creates an automatic safety snapshot and attempts rollback if restore fails.
+# 2) Inspect what was captured
+git-snapshot show before-rebase
+
+# 3) Compare restore readiness vs current tree
+git-snapshot compare before-rebase --files
+
+# 4) Restore when needed (interactive confirmation)
+git-snapshot restore before-rebase
+```
+
+## Scope and Exactness
+
+### Root scope
+
+The tool always resolves scope to the **root-most superproject** from your
+current working directory.
+
+Examples:
+- From repo root: scope is that repo.
+- From `modules/sub1`: scope is still root superproject.
+- From `modules/sub1/modules/sub2`: scope is still root superproject.
+
+### Captured state model
+
+Per repository in scope (`.` and each initialized submodule), snapshot data
+includes:
+- `HEAD` commit hash at capture time
+- staged patch (`git diff --cached --binary`)
+- unstaged patch (`git diff --binary`)
+- untracked non-ignored files archive
+
+### Restore exactness target
+
+Restore aims to re-create:
+- tracked file state
+- untracked non-ignored file set and content
+
+Ignored files are intentionally out of scope.
+
+## Command Reference
+
+### `git-snapshot create [snapshot_id]`
+
+Creates a snapshot.
+
+- If `snapshot_id` is omitted, an id is generated:
+  `snapshot-YYYYMMDD-HHMMSS-<pid>-<random>`
+- If provided, `snapshot_id` must match `[A-Za-z0-9._-]+` and must not exist.
+- Last output line is always the snapshot id.
+
+### `git-snapshot list [--porcelain]`
+
+Lists snapshots for the resolved root-most repo.
+
+- Default output: human table (`ID`, `Created`, `Age`, `Repos`)
+- `--porcelain`: one stable tab-delimited line per snapshot with key/value fields
+
+### `git-snapshot show <snapshot_id> [--repo <rel_path>] [--verbose] [--porcelain]`
+
+Inspects snapshot metadata and per-repo details.
+
+Default (human) output includes:
+- Snapshot metadata (id, root path, creation time, repo count)
+- Per repo:
+  - snapshot commit + refs
+  - current commit + refs
+  - relation (`same`, `current-ahead`, `current-behind`, `diverged`, `unrelated`, `missing`)
+  - captured staged/unstaged/untracked file lists
+  - restore readiness signals:
+    - apply staged (`ok`, `fail`, `none`)
+    - apply unstaged (`ok`, `fail`, `none`)
+    - untracked collisions count
+
+Flags:
+- `--repo <rel_path>`: narrow output to one repo path from snapshot metadata
+- `--verbose`: include internal fields (integrity hash, bundle directory, full commit hashes)
+- `--porcelain`: stable machine output
+
+### `git-snapshot diff <snapshot_id> [options]`
+
+Shows captured bundle contents without mutating current repos.
+
+Category flags:
+- `--staged`
+- `--unstaged`
+- `--untracked`
+- `--all` (default behavior if no category is selected)
+
+Render mode flags (mutually exclusive):
+- `--name-only`
+- `--stat` (default)
+- `--patch`
+
+Other flags:
+- `--repo <rel_path>`
+- `--porcelain`
+
+### `git-snapshot compare <snapshot_id> [--repo <rel_path>] [--files] [--porcelain]`
+
+Checks restore compatibility against the current workspace state.
+
+Per-repo checks:
+- commit relation vs snapshot
+- apply-check for staged patch
+- apply-check for unstaged patch
+- untracked collisions
+
+Exit codes:
+- `0`: all compared repos are restore-compatible
+- `3`: compatibility issues found
+- `1`: usage/runtime error
+
+`--files` includes captured file inventories and collision file details.
+
+### `git-snapshot restore <snapshot_id>`
+
+Restores a snapshot with guardrails:
+
+1. Warn about destructive implications
+2. Require typed confirmation (`RESTORE`) unless env override is set
+3. Create automatic safety snapshot
+4. Attempt restore
+5. Verify status-hash parity
+6. Attempt automatic rollback to safety snapshot on failure
+
+Non-interactive confirmation:
+
+```bash
+GIT_SNAPSHOT_CONFIRM_RESTORE=RESTORE git-snapshot restore <snapshot_id>
+```
+
+### `git-snapshot delete <snapshot_id>`
+
+Deletes snapshot directory data.
+
+### `git-snapshot debug-dirty`
+
+Prints dirty repo relative paths discovered in root scope and initialized submodules.
+
+## Output Modes
+
+### Human mode (default)
+
+Readable diagnostics intended for interactive terminal use.
+
+### Porcelain mode (`--porcelain`)
+
+Stable tab-delimited key/value lines for scripts.
+
+Examples:
+
+```bash
+git-snapshot list --porcelain
+git-snapshot show before-rebase --porcelain
+git-snapshot diff before-rebase --porcelain
+git-snapshot compare before-rebase --porcelain
+```
+
+## Storage Layout
+
+Default storage root:
+
+```text
+~/git-snapshots/<root-most-repo-name>/
+```
+
+Per snapshot:
+
+```text
+<snapshot_id>/
+  meta.env
+  repos.tsv
+  repos/
+    repo-0001/
+      staged.patch
+      unstaged.patch
+      untracked.tar
+```
+
+## Safety Controls
+
+### Enforce-root-prefix guard
+
+Set:
+
+```bash
+export GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX=/path/to/allowed/repos
+```
+
+If set, commands abort when resolved root-most repo is outside this prefix.
+This is heavily used by tests to prevent accidental writes to real repositories.
+
+### Restore confirmation override
+
+Set:
+
+```bash
+export GIT_SNAPSHOT_CONFIRM_RESTORE=RESTORE
+```
+
+Useful for controlled non-interactive automation.
+
+## Troubleshooting
+
+- `Refusing to operate outside enforced prefix`
+  - Command scope root is outside `GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX`.
+- `Snapshot does not exist`
+  - Wrong snapshot id or wrong root-scope repo context.
+- `compare` exits with code `3`
+  - One or more repos are not restore-compatible in current state.
+  - Run `git-snapshot compare <id> --files` for detail.
+- Restore failure with rollback message
+  - Restore failed mid-flow and rollback attempted automatically to safety snapshot.
 
 ## Tests
-Run:
+
+Run all bash-helpers tests:
 
 ```bash
 ./tests/run-tests.sh
 ```
 
-Tests are dependency-free shell scripts and use temporary sandboxes only.
+Test suite guarantees:
+- temporary sandbox-only repositories (`mktemp -d`)
+- sandbox-local `HOME`
+- enforced prefix guard during test invocations
+- no mutations against real repositories

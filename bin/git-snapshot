@@ -16,6 +16,8 @@ source "${LIB_DIR}/bundle-store.bash"
 # shellcheck source=/dev/null
 source "${LIB_DIR}/restore.bash"
 # shellcheck source=/dev/null
+source "${LIB_DIR}/inspect.bash"
+# shellcheck source=/dev/null
 source "${LIB_DIR}/core.bash"
 
 git_snapshot_main "$@"

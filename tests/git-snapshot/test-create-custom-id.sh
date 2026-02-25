@@ -20,7 +20,10 @@ assert_eq "${custom_snapshot_id}" "${created_id}" "explicit snapshot id should b
 assert_file_exists "${snapshot_root}/${custom_snapshot_id}/meta.env" "snapshot should be created under explicit id"
 
 show_output="$(cd "${root_repo}" && git_snapshot_test_cmd show "${custom_snapshot_id}")"
-assert_contains "snapshot_id=${custom_snapshot_id}" "${show_output}" "show should resolve explicit snapshot id"
+assert_contains "Snapshot: ${custom_snapshot_id}" "${show_output}" "show should resolve explicit snapshot id (human)"
+
+show_porcelain_output="$(cd "${root_repo}" && git_snapshot_test_cmd show "${custom_snapshot_id}" --porcelain)"
+assert_contains "snapshot_id=${custom_snapshot_id}" "${show_porcelain_output}" "show porcelain should resolve explicit snapshot id"
 
 set +e
 dup_output="$(cd "${root_repo}" && git_snapshot_test_cmd create "${custom_snapshot_id}" 2>&1)"

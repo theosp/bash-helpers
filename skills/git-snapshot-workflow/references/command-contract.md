@@ -5,16 +5,31 @@
 - `git-snapshot create`
   - Creates a snapshot for root-most superproject + initialized recursive submodules.
   - Snapshot id is printed as the last output line.
+  - Can accept explicit id: `git-snapshot create <snapshot_id>`.
 
-- `git-snapshot list`
-  - Lists snapshot ids with basic metadata.
+- `git-snapshot list [--porcelain]`
+  - Human output: table (id, created, age, repo count).
+  - Porcelain output: tab-delimited `snapshot` rows with key/value fields.
 
-- `git-snapshot show <snapshot_id>`
-  - Prints snapshot metadata and per-repo records.
+- `git-snapshot show <snapshot_id> [--repo <rel_path>] [--verbose] [--porcelain]`
+  - Human output: detailed metadata, relation, captured files, restore readiness.
+  - Porcelain output: `snapshot_id=...` header lines + `repo\t...` rows.
+
+- `git-snapshot diff <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--name-only|--stat|--patch] [--porcelain]`
+  - Shows captured snapshot bundle content by category.
+  - Non-mutating.
+
+- `git-snapshot compare <snapshot_id> [--repo <rel_path>] [--files] [--porcelain]`
+  - Checks restore compatibility against current tree.
+  - Exit codes:
+    - `0`: all compared repos compatible
+    - `3`: compatibility issues found
+    - `1`: usage/runtime error
 
 - `git-snapshot restore <snapshot_id>`
   - Restores snapshot target state.
   - Requires typed confirmation unless `GIT_SNAPSHOT_CONFIRM_RESTORE=RESTORE` is provided.
+  - Creates safety snapshot and attempts rollback on restore failure.
 
 - `git-snapshot delete <snapshot_id>`
   - Deletes snapshot data for the given id.

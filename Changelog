@@ -1,3 +1,29 @@
+v1.0.3 (2026-02-25)
+
+* Redesign `git-snapshot` human output for `list` and `show` to provide
+  readable snapshot metadata, commit relation context, captured file inventory,
+  and restore-readiness diagnostics.
+
+* Add explicit porcelain output mode for `list` and richer porcelain records for
+  `show` so scripts can consume stable machine-readable fields.
+
+* Add new inspection commands:
+  - `git-snapshot diff <snapshot_id>` to inspect captured staged/unstaged/
+    untracked snapshot content
+  - `git-snapshot compare <snapshot_id>` to evaluate restore compatibility with
+    explicit compatibility exit codes (`0` clean, `3` issues).
+
+* Add new inspection helpers in `lib/git-snapshot/inspect.bash` for commit
+  relation classification, file inventory extraction, apply-check probes,
+  collision detection, and human-readable time/age formatting.
+
+* Expand `README.md` into full operational documentation with scope/exactness
+  model, command semantics, safety controls, troubleshooting guidance, and
+  porcelain contract examples.
+
+* Update workflow-skill command contract docs and add test coverage for human
+  output, porcelain output, and `diff`/`compare` behaviors.
+
 v1.0.2 (2026-02-25)
 
 * Change snapshot storage layout to write snapshots directly under

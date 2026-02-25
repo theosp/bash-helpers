@@ -22,6 +22,6 @@ for pwd_entry in \
   "${sub2}/."; do
   out="$(cd "${pwd_entry}" && git_snapshot_test_cmd create)"
   sid="$(git_snapshot_test_get_snapshot_id_from_create_output "${out}")"
-  show_out="$(cd "${pwd_entry}" && git_snapshot_test_cmd show "${sid}")"
+  show_out="$(cd "${pwd_entry}" && git_snapshot_test_cmd show "${sid}" --porcelain)"
   assert_contains "root_repo=${canonical_root}" "${show_out}" "scope should always resolve to root-most superproject"
 done
