@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+LIB_DIR="${SCRIPT_DIR}/../lib/git-snapshot"
+
+# shellcheck source=/dev/null
+source "${LIB_DIR}/ui.bash"
+# shellcheck source=/dev/null
+source "${LIB_DIR}/repo-discovery.bash"
+# shellcheck source=/dev/null
+source "${LIB_DIR}/status-hash.bash"
+# shellcheck source=/dev/null
+source "${LIB_DIR}/bundle-store.bash"
+# shellcheck source=/dev/null
+source "${LIB_DIR}/restore.bash"
+# shellcheck source=/dev/null
+source "${LIB_DIR}/core.bash"
+
+git_snapshot_main "$@"

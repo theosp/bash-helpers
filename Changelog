@@ -1,0 +1,14 @@
+v1.0.0 (2026-02-25)
+
+* Add `git-snapshot` CLI with root-most repo discovery, scoped safety guard,
+  create/show/list/delete flows, and restore verification.
+
+* Add restore safety model with typed confirmation, auto safety snapshot,
+  best-effort HEAD-mismatch restore, and automatic rollback on failure.
+
+* Add dependency-free temp-only test suite covering nested submodules,
+  PWD-level scope resolution, exact restore parity, head-mismatch behavior,
+  rollback behavior, and enforce-prefix protection.
+
+* Add shared `git-snapshot-workflow` skill in `skills/` with reusable command
+  contract docs and a generic repo-link helper for consumer symlink onboarding.
