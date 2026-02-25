@@ -16,15 +16,46 @@ Environment:
 USAGE
 }
 
+_git_snapshot_validate_snapshot_id() {
+  local snapshot_id="$1"
+
+  if [[ -z "${snapshot_id}" ]]; then
+    _git_snapshot_ui_err "snapshot_id cannot be empty"
+    return 1
+  fi
+
+  if [[ "${snapshot_id}" == "." || "${snapshot_id}" == ".." ]]; then
+    _git_snapshot_ui_err "Invalid snapshot_id '${snapshot_id}'. Reserved path segment."
+    return 1
+  fi
+
+  if [[ "${snapshot_id}" == *"/"* ]]; then
+    _git_snapshot_ui_err "Invalid snapshot_id '${snapshot_id}'. '/' is not allowed."
+    return 1
+  fi
+
+  if [[ ! "${snapshot_id}" =~ ^[A-Za-z0-9._-]+$ ]]; then
+    _git_snapshot_ui_err "Invalid snapshot_id '${snapshot_id}'. Allowed: [A-Za-z0-9._-]"
+    return 1
+  fi
+
+  return 0
+}
+
 _git_snapshot_create_internal() {
   local root_repo="$1"
   local label="${2:-snapshot}"
   local print_info="${3:-true}"
+  local explicit_snapshot_id="${4:-}"
 
   _git_snapshot_store_ensure_dirs "${root_repo}"
 
   local snapshot_id snapshot_path
-  snapshot_id="$(_git_snapshot_store_new_snapshot_id "${label}")"
+  if [[ -n "${explicit_snapshot_id}" ]]; then
+    snapshot_id="${explicit_snapshot_id}"
+  else
+    snapshot_id="$(_git_snapshot_store_new_snapshot_id "${label}")"
+  fi
   snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
 
   mkdir -p "${snapshot_path}/repos"
@@ -89,6 +120,7 @@ _git_snapshot_cmd_create() {
   local snapshot_id_override="${2:-}"
 
   if [[ -n "${snapshot_id_override}" ]]; then
+    _git_snapshot_validate_snapshot_id "${snapshot_id_override}"
     _git_snapshot_store_ensure_dirs "${root_repo}"
     local path
     path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id_override}")"
@@ -98,7 +130,7 @@ _git_snapshot_cmd_create() {
     fi
   fi
 
-  _git_snapshot_create_internal "${root_repo}" "snapshot" true
+  _git_snapshot_create_internal "${root_repo}" "snapshot" true "${snapshot_id_override}"
 }
 
 _git_snapshot_cmd_list() {
@@ -117,6 +149,7 @@ _git_snapshot_cmd_show() {
   local root_repo="$1"
   local snapshot_id="$2"
 
+  _git_snapshot_validate_snapshot_id "${snapshot_id}"
   _git_snapshot_store_assert_snapshot_exists "${root_repo}" "${snapshot_id}"
   local snapshot_path
   snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
@@ -140,6 +173,7 @@ _git_snapshot_cmd_restore() {
   local root_repo="$1"
   local snapshot_id="$2"
 
+  _git_snapshot_validate_snapshot_id "${snapshot_id}"
   _git_snapshot_store_assert_snapshot_exists "${root_repo}" "${snapshot_id}"
 
   _git_snapshot_ui_warn "Restore will overwrite tracked changes and delete untracked files (ignored files stay untouched)."
@@ -154,6 +188,7 @@ _git_snapshot_cmd_delete() {
   local snapshot_id="$2"
   local snapshot_path
 
+  _git_snapshot_validate_snapshot_id "${snapshot_id}"
   _git_snapshot_store_assert_snapshot_exists "${root_repo}" "${snapshot_id}"
   snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
 
