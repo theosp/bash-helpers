@@ -80,6 +80,21 @@ Restore aims to re-create:
 
 Ignored files are intentionally out of scope.
 
+### Verify semantics and caveat
+
+`git-snapshot verify` checks snapshot-captured working-set equivalence:
+- staged patch bytes
+- unstaged patch bytes
+- untracked non-ignored file set+content
+
+By default, HEAD mismatch is warning-only. This is intentional for long-running
+workflows where you snapshot, continue unrelated work (including new commits),
+then later restore/check parity of the captured working set.
+
+Use `--strict-head` when commit identity itself is part of the requirement
+(for example rebase-sensitive checkpoints or when you must ensure the exact same
+commit baseline before proceeding).
+
 ## Command Reference
 
 ### `git-snapshot create [snapshot_id] [--clear] [--yes]`
@@ -191,6 +206,32 @@ Exit codes:
 `--details` prints detailed per-repo sections.
 `--files` includes captured file inventories and collision file details (implies `--details`).
 `--all-repos` includes clean repos in summary output.
+
+### `git-snapshot verify <snapshot_id> [--repo <rel_path>] [--strict-head] [--porcelain]`
+
+Verifies whether the current working-set state matches what the snapshot
+captured.
+
+Default checks:
+- staged patch bytes match
+- unstaged patch bytes match
+- untracked non-ignored set+content match
+
+Head policy:
+- default: HEAD mismatch is warning-only (exit remains success if no other mismatches)
+- `--strict-head`: HEAD mismatch is treated as mismatch (exit code `3`)
+
+Why default is non-strict:
+- lets you continue normal development after snapshot creation (including commits)
+  and still verify/restore against captured working-set data later.
+
+Use `--strict-head` when:
+- the exact commit baseline is part of safety requirements, not only file-state parity.
+
+Exit codes:
+- `0`: verified (or warnings only in default mode)
+- `3`: mismatches detected
+- `1`: usage/runtime error
 
 ### `git-snapshot restore <snapshot_id>`
 

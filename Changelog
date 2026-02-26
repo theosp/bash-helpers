@@ -1,3 +1,22 @@
+v1.0.10 (2026-02-26)
+
+* Add `git-snapshot verify <snapshot_id>` to validate snapshot working-set
+  parity against current state (staged/unstaged patch bytes and untracked
+  non-ignored set+content), with mismatch exit code `3`.
+
+* Add optional `--strict-head` mode for `verify`:
+  - default mode keeps HEAD mismatch as warning-only (non-fatal)
+  - strict mode promotes HEAD mismatch to failure when commit identity matters.
+
+* Wire `verify` into CLI dispatch and expand help/docs/skill references to
+  clarify default vs strict-head semantics and selection guidance.
+
+* Add regression coverage for `verify` behavior:
+  - default warning-only head mismatch
+  - strict-head mismatch failure
+  - staged/unstaged/untracked mismatch detection
+  - porcelain verify output.
+
 v1.0.9 (2026-02-26)
 
 * Add `git-snapshot create --clear` workflow for interrupt-and-switch use:

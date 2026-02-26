@@ -41,6 +41,23 @@
     - `3`: compatibility issues found
     - `1`: usage/runtime error
 
+- `git-snapshot verify <snapshot_id> [--repo <rel_path>] [--strict-head] [--porcelain]`
+  - Verifies snapshot-captured working-set parity against current state:
+    - staged patch bytes
+    - unstaged patch bytes
+    - untracked non-ignored set+content
+  - Default head policy: HEAD mismatch is warning-only.
+  - `--strict-head`: HEAD mismatch becomes mismatch/failure.
+  - Why default is non-strict: supports long-running workflows where new commits
+    are expected after snapshot creation but working-set parity remains the main
+    recoverability target.
+  - When to use strict: commit identity itself is a requirement (for example,
+    rebase-sensitive checkpoints).
+  - Exit codes:
+    - `0`: verified (or warnings only in default mode)
+    - `3`: mismatches found
+    - `1`: usage/runtime error
+
 - `git-snapshot restore <snapshot_id>`
   - Restores snapshot target state.
   - Requires typed confirmation unless `GIT_SNAPSHOT_CONFIRM_RESTORE=RESTORE` is provided.

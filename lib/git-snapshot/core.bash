@@ -32,6 +32,7 @@ Usage
   git-snapshot show <snapshot_id> [--repo <rel_path>] [--verbose] [--porcelain]
   git-snapshot diff <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--files|--name-only|--stat|--patch] [--limit <n>|--no-limit] [--porcelain]
   git-snapshot compare <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]
+  git-snapshot verify <snapshot_id> [--repo <rel_path>] [--strict-head] [--porcelain]
   git-snapshot restore <snapshot_id>
   git-snapshot delete <snapshot_id>
   git-snapshot debug-dirty
@@ -139,6 +140,25 @@ compare
   - 3 : compatibility issues found
   - 1 : usage/runtime error
 
+verify
+  Verifies whether current working-set state matches what the snapshot captured.
+  Default verification scope:
+  - staged patch bytes
+  - unstaged patch bytes
+  - untracked non-ignored file set+content
+  Default head policy:
+  - HEAD mismatch is warning-only (`--strict-head` turns it into mismatch/failure)
+  Caveat:
+  - default mode does not guarantee full tracked clean-file equivalence across branches/commits
+  Optional flags:
+  - `--repo <rel_path>` : verify one snapshot repo path
+  - `--strict-head`     : require current HEAD to equal snapshot HEAD
+  - `--porcelain`       : stable machine output
+  Exit codes:
+  - 0 : verified (or warnings only)
+  - 3 : mismatches detected
+  - 1 : usage/runtime error
+
 restore
   Restores tracked + untracked non-ignored state from snapshot bundles.
   Workflow:
@@ -193,6 +213,9 @@ Deep inspection:
   git-snapshot compare before-rebase --details
   git-snapshot compare before-rebase --files
   git-snapshot compare before-rebase --porcelain
+  git-snapshot verify before-rebase
+  git-snapshot verify before-rebase --strict-head
+  git-snapshot verify before-rebase --porcelain
 
 Restore:
   git-snapshot restore before-rebase
@@ -203,6 +226,8 @@ Troubleshooting
   resolved root repo is outside `GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX`.
 - compare exits 3:
   one or more repos are not restore-compatible in current state.
+- verify exits 3:
+  one or more snapshot working-set mismatches were detected.
 - restore failed:
   inspect error details, then use safety snapshot id printed by restore flow.
 USAGE
@@ -1382,6 +1407,233 @@ _git_snapshot_cmd_compare() {
   return 0
 }
 
+_git_snapshot_write_current_untracked_manifest() {
+  local repo_abs="$1"
+  local output_file="$2"
+  local rel_path hash
+
+  : > "${output_file}"
+  while IFS= read -r -d '' rel_path; do
+    [[ -z "${rel_path}" ]] && continue
+    hash="$(shasum -a 256 "${repo_abs}/${rel_path}" | awk '{print $1}')"
+    printf "%s\t%s\n" "${rel_path}" "${hash}" >> "${output_file}"
+  done < <(git -C "${repo_abs}" ls-files --others --exclude-standard -z)
+
+  LC_ALL=C sort -o "${output_file}" "${output_file}"
+}
+
+_git_snapshot_write_snapshot_untracked_manifest() {
+  local repo_bundle_dir="$1"
+  local output_file="$2"
+  local tar_file="${repo_bundle_dir}/untracked.tar"
+  local rel_path hash
+
+  : > "${output_file}"
+  if [[ ! -f "${tar_file}" ]]; then
+    return 0
+  fi
+
+  while IFS= read -r rel_path; do
+    [[ -z "${rel_path}" ]] && continue
+    hash="$(tar -xOf "${tar_file}" "${rel_path}" | shasum -a 256 | awk '{print $1}')"
+    printf "%s\t%s\n" "${rel_path}" "${hash}" >> "${output_file}"
+  done < <(tar -tf "${tar_file}")
+
+  LC_ALL=C sort -o "${output_file}" "${output_file}"
+}
+
+_git_snapshot_cmd_verify() {
+  local root_repo="$1"
+  shift
+
+  local snapshot_id=""
+  local repo_filter=""
+  local porcelain="false"
+  local strict_head="false"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --repo)
+        if [[ -z "${2:-}" ]]; then
+          _git_snapshot_ui_err "Missing value for --repo"
+          return 1
+        fi
+        repo_filter="$2"
+        shift
+        ;;
+      --porcelain)
+        porcelain="true"
+        ;;
+      --strict-head)
+        strict_head="true"
+        ;;
+      -*)
+        _git_snapshot_ui_err "Unknown option for verify: $1"
+        return 1
+        ;;
+      *)
+        if [[ -z "${snapshot_id}" ]]; then
+          snapshot_id="$1"
+        else
+          _git_snapshot_ui_err "Unexpected argument for verify: $1"
+          return 1
+        fi
+        ;;
+    esac
+    shift
+  done
+
+  if [[ -z "${snapshot_id}" ]]; then
+    _git_snapshot_ui_err "Missing snapshot_id for verify"
+    return 1
+  fi
+
+  _git_snapshot_validate_snapshot_id "${snapshot_id}"
+  _git_snapshot_store_assert_snapshot_exists "${root_repo}" "${snapshot_id}"
+  local snapshot_path
+  snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
+
+  if [[ -n "${repo_filter}" ]]; then
+    _git_snapshot_validate_repo_filter "${snapshot_path}" "${repo_filter}"
+  fi
+
+  local repos_checked=0
+  local mismatch_count=0
+  local warning_count=0
+  local mismatch_rows=""
+  local warning_rows=""
+  local repo_id rel_path snapshot_head _status_hash
+
+  while IFS=$'\t' read -r repo_id rel_path snapshot_head _status_hash; do
+    [[ -z "${repo_id}" ]] && continue
+    if [[ -n "${repo_filter}" && "${rel_path}" != "${repo_filter}" ]]; then
+      continue
+    fi
+    repos_checked=$((repos_checked + 1))
+
+    local repo_abs repo_bundle_dir current_head
+    local head_state="same"
+    local staged_state="match"
+    local unstaged_state="match"
+    local untracked_state="match"
+    local has_mismatch="false"
+    local has_warning="false"
+    local repo_mismatch_rows=""
+    local repo_warning_rows=""
+
+    repo_abs="${root_repo}/${rel_path}"
+    repo_bundle_dir="$(_git_snapshot_store_repo_dir_for_id "${snapshot_path}" "${repo_id}")"
+
+    if ! git -C "${repo_abs}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+      head_state="missing"
+      staged_state="missing"
+      unstaged_state="missing"
+      untracked_state="missing"
+      has_mismatch="true"
+      repo_mismatch_rows+="repo missing at path=${rel_path}"$'\n'
+    else
+      current_head="$(git -C "${repo_abs}" rev-parse HEAD 2>/dev/null || true)"
+      if [[ "${current_head}" != "${snapshot_head}" ]]; then
+        head_state="mismatch"
+        if [[ "${strict_head}" == "true" ]]; then
+          has_mismatch="true"
+          repo_mismatch_rows+="head mismatch snapshot=${snapshot_head} current=${current_head}"$'\n'
+        else
+          has_warning="true"
+          repo_warning_rows+="head mismatch snapshot=${snapshot_head} current=${current_head}"$'\n'
+        fi
+      fi
+
+      local expected_staged_hash current_staged_hash
+      local expected_unstaged_hash current_unstaged_hash
+      expected_staged_hash="$(shasum -a 256 "${repo_bundle_dir}/staged.patch" | awk '{print $1}')"
+      current_staged_hash="$(git -C "${repo_abs}" diff --cached --binary | shasum -a 256 | awk '{print $1}')"
+      if [[ "${expected_staged_hash}" != "${current_staged_hash}" ]]; then
+        staged_state="mismatch"
+        has_mismatch="true"
+        repo_mismatch_rows+="staged patch differs"$'\n'
+      fi
+
+      expected_unstaged_hash="$(shasum -a 256 "${repo_bundle_dir}/unstaged.patch" | awk '{print $1}')"
+      current_unstaged_hash="$(git -C "${repo_abs}" diff --binary | shasum -a 256 | awk '{print $1}')"
+      if [[ "${expected_unstaged_hash}" != "${current_unstaged_hash}" ]]; then
+        unstaged_state="mismatch"
+        has_mismatch="true"
+        repo_mismatch_rows+="unstaged patch differs"$'\n'
+      fi
+
+      local expected_untracked_manifest current_untracked_manifest
+      expected_untracked_manifest="$(mktemp)"
+      current_untracked_manifest="$(mktemp)"
+      _git_snapshot_write_snapshot_untracked_manifest "${repo_bundle_dir}" "${expected_untracked_manifest}"
+      _git_snapshot_write_current_untracked_manifest "${repo_abs}" "${current_untracked_manifest}"
+      if ! cmp -s "${expected_untracked_manifest}" "${current_untracked_manifest}"; then
+        untracked_state="mismatch"
+        has_mismatch="true"
+        repo_mismatch_rows+="untracked set/content differs"$'\n'
+      fi
+      rm -f "${expected_untracked_manifest}" "${current_untracked_manifest}"
+    fi
+
+    if [[ "${has_mismatch}" == "true" ]]; then
+      mismatch_count=$((mismatch_count + 1))
+      while IFS= read -r row; do
+        [[ -z "${row}" ]] && continue
+        mismatch_rows+="${rel_path}: ${row}"$'\n'
+      done <<< "${repo_mismatch_rows}"
+    fi
+    if [[ "${has_warning}" == "true" ]]; then
+      warning_count=$((warning_count + 1))
+      while IFS= read -r row; do
+        [[ -z "${row}" ]] && continue
+        warning_rows+="${rel_path}: ${row}"$'\n'
+      done <<< "${repo_warning_rows}"
+    fi
+
+    if [[ "${porcelain}" == "true" ]]; then
+      printf "verify\tsnapshot_id=%s\trepo=%s\thead=%s\tstaged=%s\tunstaged=%s\tuntracked=%s\tstrict_head=%s\thas_mismatch=%s\thas_warning=%s\n" \
+        "${snapshot_id}" "${rel_path}" "${head_state}" "${staged_state}" "${unstaged_state}" "${untracked_state}" "${strict_head}" "${has_mismatch}" "${has_warning}"
+    fi
+  done < <(_git_snapshot_store_read_repo_entries "${snapshot_path}")
+
+  if [[ "${porcelain}" == "true" ]]; then
+    printf "verify_summary\tsnapshot_id=%s\trepos_checked=%s\tmismatches=%s\twarnings=%s\tstrict_head=%s\n" \
+      "${snapshot_id}" "${repos_checked}" "${mismatch_count}" "${warning_count}" "${strict_head}"
+  else
+    printf "Snapshot verify: %s\n" "${snapshot_id}"
+    printf "Root: %s\n" "${root_repo}"
+    printf "Strict head: %s\n" "${strict_head}"
+    printf "Repos checked: %s | mismatches: %s | warnings: %s\n" "${repos_checked}" "${mismatch_count}" "${warning_count}"
+
+    if [[ "${mismatch_count}" -eq 0 ]]; then
+      printf "Verification: match within snapshot scope.\n"
+    else
+      printf "Verification: mismatches detected.\n"
+    fi
+
+    if [[ -n "${warning_rows}" ]]; then
+      printf "\nWarnings:\n"
+      while IFS= read -r row; do
+        [[ -z "${row}" ]] && continue
+        printf "  - %s\n" "${row}"
+      done <<< "${warning_rows}"
+    fi
+
+    if [[ -n "${mismatch_rows}" ]]; then
+      printf "\nMismatches:\n"
+      while IFS= read -r row; do
+        [[ -z "${row}" ]] && continue
+        printf "  - %s\n" "${row}"
+      done <<< "${mismatch_rows}"
+    fi
+  fi
+
+  if [[ "${mismatch_count}" -gt 0 ]]; then
+    return 3
+  fi
+  return 0
+}
+
 _git_snapshot_cmd_restore() {
   local root_repo="$1"
   local snapshot_id="$2"
@@ -1445,6 +1697,9 @@ git_snapshot_main() {
       ;;
     compare)
       _git_snapshot_cmd_compare "${root_repo}" "$@"
+      ;;
+    verify)
+      _git_snapshot_cmd_verify "${root_repo}" "$@"
       ;;
     restore)
       if [[ -z "${1:-}" ]]; then

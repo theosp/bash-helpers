@@ -45,6 +45,10 @@ Follow this sequence and report each step.
 2. Verify snapshot
 - Run: `git-snapshot show <snapshot_id>`
 - Confirm metadata is present: snapshot id, root repo path, repo count, per-repo entries.
+- Run: `git-snapshot verify <snapshot_id>`
+  - default mode verifies captured working-set parity (staged/unstaged/untracked)
+  - default mode treats HEAD mismatch as warning-only
+  - use `--strict-head` only when commit identity must also match snapshot HEAD
 
 3. Restore snapshot (only on explicit user restore intent)
 - Explain restore is destructive for tracked changes and untracked non-ignored files.
@@ -54,7 +58,8 @@ Follow this sequence and report each step.
 
 4. Post-restore verification
 - Re-run: `git-snapshot show <snapshot_id>`.
-- Check repo status or helper output and summarize whether restore matched expected state.
+- Re-run: `git-snapshot verify <snapshot_id>` (default mode unless strict commit parity is required).
+- Check repo status/helper output and summarize whether restore matched expected state.
 
 ## Safety notes
 
