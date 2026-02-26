@@ -17,8 +17,20 @@ assert_contains "Git Snapshot CLI" "${help_output}" "help should include header"
 assert_contains "State model (what is captured)" "${help_output}" "help should document capture model"
 assert_contains "git-snapshot create [snapshot_id] [--clear] [--yes]" "${help_output}" "help should document create --clear workflow"
 assert_contains "git-snapshot rename <old_snapshot_id> <new_snapshot_id>" "${help_output}" "help should document rename command"
-assert_contains "git-snapshot diff <snapshot_id>" "${help_output}" "help should document diff command"
-assert_contains "git-snapshot compare <snapshot_id>" "${help_output}" "help should document compare command"
+assert_contains "git-snapshot inspect <snapshot_id>" "${help_output}" "help should document inspect command"
+assert_contains "git-snapshot restore-check <snapshot_id>" "${help_output}" "help should document restore-check command"
 assert_contains "git-snapshot verify <snapshot_id>" "${help_output}" "help should document verify command"
 assert_contains "HEAD mismatch is warning-only" "${help_output}" "help should explain default verify head policy"
 assert_contains "Troubleshooting" "${help_output}" "help should include troubleshooting guidance"
+
+set +e
+old_diff_output="$(cd "${root_repo}" && git_snapshot_test_cmd diff legacy-id 2>&1)"
+old_diff_code=$?
+old_compare_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare legacy-id 2>&1)"
+old_compare_code=$?
+set -e
+
+assert_exit_code 1 "${old_diff_code}" "old diff command should fail after hard rename"
+assert_contains "Unknown command: diff" "${old_diff_output}" "old diff command should be unknown"
+assert_exit_code 1 "${old_compare_code}" "old compare command should fail after hard rename"
+assert_contains "Unknown command: compare" "${old_compare_output}" "old compare command should be unknown"

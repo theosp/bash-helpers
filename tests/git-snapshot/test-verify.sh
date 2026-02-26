@@ -20,6 +20,7 @@ assert_contains "Snapshot verify: ${snapshot_id}" "${verify_clean_output}" "veri
 assert_contains "Strict head: false" "${verify_clean_output}" "verify default mode should be non-strict head"
 assert_contains "mismatches: 0" "${verify_clean_output}" "clean snapshot should report no mismatches"
 assert_contains "warnings: 0" "${verify_clean_output}" "clean snapshot should report no warnings"
+assert_not_contains "Follow-up commands for deeper details:" "${verify_clean_output}" "clean verify should not print mismatch follow-up guidance"
 assert_contains "Hint: run \"git-snapshot verify ${snapshot_id} --strict-head\" to also require HEAD commit equality." "${verify_clean_output}" "verify default mode should include strict-head hint"
 
 # Move only HEAD: working-set stays clean, so default verify should warn but pass.
@@ -45,6 +46,7 @@ assert_exit_code 3 "${verify_head_strict_code}" "strict-head verify should fail 
 assert_contains "Strict head: true" "${verify_head_strict_output}" "strict mode should be printed"
 assert_contains "mismatches: 1" "${verify_head_strict_output}" "head mismatch should become mismatch in strict mode"
 assert_contains "head mismatch" "${verify_head_strict_output}" "strict mode should explain head mismatch reason"
+assert_contains "Follow-up commands for deeper details:" "${verify_head_strict_output}" "strict mismatch should print follow-up guidance"
 assert_not_contains "Hint: run \"git-snapshot verify ${snapshot_id} --strict-head\"" "${verify_head_strict_output}" "strict mode should not include strict-head hint"
 
 # Capture new clean baseline on current HEAD for staged/unstaged/untracked mismatch checks.
@@ -62,6 +64,9 @@ assert_exit_code 3 "${verify_staged_code}" "verify should fail when staged patch
 assert_contains "staged patch differs" "${verify_staged_output}" "verify should report staged mismatch"
 assert_contains "super: staged patch differs (snapshot=" "${verify_staged_output}" "verify staged mismatch should include root repo label and summary"
 assert_contains "current=1 [root.txt]" "${verify_staged_output}" "verify staged mismatch should include current file preview"
+assert_contains "Follow-up commands for deeper details:" "${verify_staged_output}" "mismatch verify should print follow-up guidance"
+assert_contains "git-snapshot inspect ${second_snapshot_id} --repo . --staged --unstaged --untracked --files --no-limit" "${verify_staged_output}" "follow-up guidance should include detailed inspect command"
+assert_contains "git-snapshot restore-check ${second_snapshot_id} --repo . --details --files --no-limit" "${verify_staged_output}" "follow-up guidance should include restore-check command"
 git -C "${root_repo}" reset --hard >/dev/null
 
 printf "unstaged-delta\n" >> "${root_repo}/root.txt"

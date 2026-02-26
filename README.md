@@ -44,8 +44,8 @@ git-snapshot rename before-rebase before-rebase-capability-gating
 # 2) Inspect what was captured
 git-snapshot show before-rebase-capability-gating
 
-# 3) Compare restore readiness vs current tree
-git-snapshot compare before-rebase-capability-gating --files
+# 3) Check restore readiness vs current tree
+git-snapshot restore-check before-rebase-capability-gating --files
 
 # 4) Restore when needed (interactive confirmation)
 git-snapshot restore before-rebase-capability-gating
@@ -158,7 +158,7 @@ Flags:
 - `--verbose`: include internal fields (integrity hash, bundle directory, full commit hashes)
 - `--porcelain`: stable machine output
 
-### `git-snapshot diff <snapshot_id> [options]`
+### `git-snapshot inspect <snapshot_id> [options]`
 
 Shows captured bundle contents without mutating current repos.
 Default behavior is summary-first:
@@ -185,7 +185,7 @@ Other flags:
 - `--no-limit` (disable file-list limits)
 - `--porcelain`
 
-### `git-snapshot compare <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]`
+### `git-snapshot restore-check <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]`
 
 Checks restore compatibility against the current workspace state.
 Default behavior is summary-first:
@@ -273,8 +273,8 @@ Examples:
 ```bash
 git-snapshot list --porcelain
 git-snapshot show before-rebase --porcelain
-git-snapshot diff before-rebase --porcelain
-git-snapshot compare before-rebase --porcelain
+git-snapshot inspect before-rebase --porcelain
+git-snapshot restore-check before-rebase --porcelain
 ```
 
 ## Storage Layout
@@ -337,9 +337,9 @@ This bypasses interactive confirmation for `git-snapshot create --clear`.
   - Command scope root is outside `GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX`.
 - `Snapshot does not exist`
   - Wrong snapshot id or wrong root-scope repo context.
-- `compare` exits with code `3`
+- `restore-check` exits with code `3`
   - One or more repos are not restore-compatible in current state.
-  - Run `git-snapshot compare <id> --details` for detail.
+  - Run `git-snapshot restore-check <id> --details` for detail.
 - Restore failure with rollback message
   - Restore failed mid-flow and rollback attempted automatically to safety snapshot.
 

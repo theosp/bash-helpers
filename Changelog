@@ -1,3 +1,19 @@
+v1.0.14 (2026-02-26)
+
+* Breaking CLI rename:
+  - `git-snapshot diff` -> `git-snapshot inspect`
+  - `git-snapshot compare` -> `git-snapshot restore-check`
+  - hard cut with no compatibility aliases for old names.
+
+* Rename corresponding porcelain prefixes for consistency:
+  - `diff`/`diff_file` -> `inspect`/`inspect_file`
+  - `compare`/`compare_file` -> `restore_check`/`restore_check_file`.
+
+* Update help/docs/skills/tests to reflect the new command names.
+
+* Keep `verify` mismatch guidance aligned with new names:
+  - follow-up commands now suggest `inspect` and `restore-check`.
+
 v1.0.13 (2026-02-26)
 
 * Move root-repo display normalization to a shared UI helper so human-facing
