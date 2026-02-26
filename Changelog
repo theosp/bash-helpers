@@ -1,3 +1,13 @@
+v1.0.12 (2026-02-26)
+
+* Add post-success `verify` hint in default mode explaining how to run
+  `--strict-head` and why strict mode can be useful.
+
+* Clarify strict-head guarantee in output: when strict verify passes, tracked +
+  untracked non-ignored snapshot scope is exact (ignored files remain out of scope).
+
+* Add regression assertions for verify hint behavior in default vs strict mode.
+
 v1.0.11 (2026-02-26)
 
 * Suppress non-actionable Git whitespace warning noise during `restore` patch

@@ -1626,6 +1626,12 @@ _git_snapshot_cmd_verify() {
         printf "  - %s\n" "${row}"
       done <<< "${mismatch_rows}"
     fi
+
+    if [[ "${strict_head}" != "true" ]]; then
+      printf "\nHint: run \"git-snapshot verify %s --strict-head\" to also require HEAD commit equality.\n" "${snapshot_id}"
+      printf "Default verify mode is file-state focused for long-running workflows where commits may move.\n"
+      printf "If strict-head also passes, tracked + untracked non-ignored state is exact to snapshot scope (ignored files remain out of scope).\n"
+    fi
   fi
 
   if [[ "${mismatch_count}" -gt 0 ]]; then

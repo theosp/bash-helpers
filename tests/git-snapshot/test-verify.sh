@@ -20,6 +20,7 @@ assert_contains "Snapshot verify: ${snapshot_id}" "${verify_clean_output}" "veri
 assert_contains "Strict head: false" "${verify_clean_output}" "verify default mode should be non-strict head"
 assert_contains "mismatches: 0" "${verify_clean_output}" "clean snapshot should report no mismatches"
 assert_contains "warnings: 0" "${verify_clean_output}" "clean snapshot should report no warnings"
+assert_contains "Hint: run \"git-snapshot verify ${snapshot_id} --strict-head\" to also require HEAD commit equality." "${verify_clean_output}" "verify default mode should include strict-head hint"
 
 # Move only HEAD: working-set stays clean, so default verify should warn but pass.
 printf "head-shift\n" >> "${root_repo}/root.txt"
@@ -43,6 +44,7 @@ assert_exit_code 3 "${verify_head_strict_code}" "strict-head verify should fail 
 assert_contains "Strict head: true" "${verify_head_strict_output}" "strict mode should be printed"
 assert_contains "mismatches: 1" "${verify_head_strict_output}" "head mismatch should become mismatch in strict mode"
 assert_contains "head mismatch" "${verify_head_strict_output}" "strict mode should explain head mismatch reason"
+assert_not_contains "Hint: run \"git-snapshot verify ${snapshot_id} --strict-head\"" "${verify_head_strict_output}" "strict mode should not include strict-head hint"
 
 # Capture new clean baseline on current HEAD for staged/unstaged/untracked mismatch checks.
 second_create_output="$(cd "${root_repo}" && git_snapshot_test_cmd create verify-working-set)"
