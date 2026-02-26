@@ -97,6 +97,10 @@ Flags:
 ### `git-snapshot diff <snapshot_id> [options]`
 
 Shows captured bundle contents without mutating current repos.
+Default behavior is summary-first:
+- show repo/file totals
+- list changed repos only
+- hide per-file output unless detail flags are used
 
 Category flags:
 - `--staged`
@@ -105,17 +109,24 @@ Category flags:
 - `--all` (default behavior if no category is selected)
 
 Render mode flags (mutually exclusive):
+- `--files` (same as `--name-only`)
 - `--name-only`
-- `--stat` (default)
+- `--stat`
 - `--patch`
 
 Other flags:
 - `--repo <rel_path>`
+- `--all-repos` (include clean repos in summary)
+- `--limit <n>` (limit listed files in detail mode, default `20`)
+- `--no-limit` (disable file-list limits)
 - `--porcelain`
 
-### `git-snapshot compare <snapshot_id> [--repo <rel_path>] [--files] [--porcelain]`
+### `git-snapshot compare <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]`
 
 Checks restore compatibility against the current workspace state.
+Default behavior is summary-first:
+- show checked/issue/clean totals
+- list issue repos only
 
 Per-repo checks:
 - commit relation vs snapshot
@@ -128,7 +139,9 @@ Exit codes:
 - `3`: compatibility issues found
 - `1`: usage/runtime error
 
-`--files` includes captured file inventories and collision file details.
+`--details` prints detailed per-repo sections.
+`--files` includes captured file inventories and collision file details (implies `--details`).
+`--all-repos` includes clean repos in summary output.
 
 ### `git-snapshot restore <snapshot_id>`
 
@@ -226,7 +239,7 @@ Useful for controlled non-interactive automation.
   - Wrong snapshot id or wrong root-scope repo context.
 - `compare` exits with code `3`
   - One or more repos are not restore-compatible in current state.
-  - Run `git-snapshot compare <id> --files` for detail.
+  - Run `git-snapshot compare <id> --details` for detail.
 - Restore failure with rollback message
   - Restore failed mid-flow and rollback attempted automatically to safety snapshot.
 

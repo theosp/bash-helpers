@@ -1,4 +1,8 @@
-v1.0.3 (2026-02-25)
+v1.0.4 (2026-02-25)
+
+* Release bucket alignment: commit
+  `605cd9e514fdca17cd7944ce6e37c558a3ef97fa` (inspection UX/docs expansion)
+  is tracked under `v1.0.4`.
 
 * Redesign `git-snapshot` human output for `list` and `show` to provide
   readable snapshot metadata, commit relation context, captured file inventory,
@@ -23,6 +27,24 @@ v1.0.3 (2026-02-25)
 
 * Update workflow-skill command contract docs and add test coverage for human
   output, porcelain output, and `diff`/`compare` behaviors.
+
+* Streamline `git-snapshot diff` and `git-snapshot compare` default human output
+  to summary-first mode:
+  - show changed/issue-focused repo summaries by default
+  - hide clean/noise-heavy repo sections unless explicitly requested
+  - provide clear hints for drilling down into details
+
+* Add detail controls for diff/compare:
+  - `--all-repos`
+  - `--details` (compare)
+  - `--files` (detail listing)
+  - `--limit <n>` / `--no-limit`
+
+* Remove `skills/git-snapshot-workflow/scripts/link-into-repo.bash` and its
+  dedicated test; keep the shared skill docs-focused without installer script.
+
+* Tighten workflow skill guidance to default to explicit, intent-derived
+  snapshot IDs instead of auto-generated IDs.
 
 v1.0.2 (2026-02-25)
 

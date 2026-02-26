@@ -16,12 +16,15 @@
   - Human output: detailed metadata, relation, captured files, restore readiness.
   - Porcelain output: `snapshot_id=...` header lines + `repo\t...` rows.
 
-- `git-snapshot diff <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--name-only|--stat|--patch] [--porcelain]`
-  - Shows captured snapshot bundle content by category.
+- `git-snapshot diff <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--files|--name-only|--stat|--patch] [--limit <n>|--no-limit] [--porcelain]`
+  - Human default is summary-first (counts + changed repos only).
+  - Use detail flags for per-file/per-patch output.
   - Non-mutating.
 
-- `git-snapshot compare <snapshot_id> [--repo <rel_path>] [--files] [--porcelain]`
+- `git-snapshot compare <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]`
   - Checks restore compatibility against current tree.
+  - Human default is summary-first (issues-focused).
+  - `--details` prints per-repo detail sections; `--files` implies details.
   - Exit codes:
     - `0`: all compared repos compatible
     - `3`: compatibility issues found

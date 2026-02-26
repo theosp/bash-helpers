@@ -11,7 +11,6 @@ SKILL_ROOT="${BASH_HELPERS_ROOT}/skills/git-snapshot-workflow"
 
 assert_file_exists "${SKILL_ROOT}/SKILL.md" "skill must exist"
 assert_file_exists "${SKILL_ROOT}/references/command-contract.md" "reference file must exist"
-assert_file_exists "${SKILL_ROOT}/scripts/link-into-repo.bash" "link helper must exist"
 
 skill_content="$(cat "${SKILL_ROOT}/SKILL.md")"
 assert_contains "name: git-snapshot-workflow" "${skill_content}" "frontmatter name required"
