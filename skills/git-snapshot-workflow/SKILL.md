@@ -27,8 +27,14 @@ Read `references/command-contract.md` for command semantics and output expectati
 Follow this sequence and report each step.
 
 1. Create snapshot
-- Run: `git-snapshot create`
-- Capture `snapshot_id` as the last output line.
+- Always choose an explicit, intent-derived snapshot id first.
+- Build id from task context, for example:
+  - `<phase>-<topic>-<yyyymmdd-hhmm>`
+  - `<operation>-<component>-<ticket-or-branch-slug>-<yyyymmdd-hhmm>`
+- Sanitize to `[A-Za-z0-9._-]+` and keep it concise.
+- Run: `git-snapshot create <snapshot_id>`
+- If id already exists, generate one deterministic retry id (for example append `-v2`), then retry once.
+- Capture and report the actual final `snapshot_id` from command output.
 
 2. Verify snapshot
 - Run: `git-snapshot show <snapshot_id>`
@@ -48,6 +54,21 @@ Follow this sequence and report each step.
 
 - If `GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX` is set, command failure means resolved root repo is outside the allowed prefix.
 - Restore may create a safety snapshot automatically and can rollback on failure.
+
+## Snapshot id policy
+
+Snapshot ids are part of recoverability UX. Prefer human-meaningful ids over auto-generated ids.
+
+Required rules:
+- Do not default to `git-snapshot create` without an id unless user explicitly asks for auto-id.
+- ID should communicate purpose of the checkpoint (what change/risk it protects).
+- Avoid sensitive values or user-private tokens in id text.
+- Keep ids shell-safe and readable in `git-snapshot list`.
+
+Good examples:
+- `pre-rebase-capability-gating-20260226-1430`
+- `before-zim-ppm-migration-20260226-1430`
+- `rollback-point-db-index-refactor-20260226-1430`
 
 ## Required response fields
 

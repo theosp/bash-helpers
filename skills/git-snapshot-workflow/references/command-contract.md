@@ -2,10 +2,11 @@
 
 ## Commands
 
-- `git-snapshot create`
+- `git-snapshot create [snapshot_id]`
   - Creates a snapshot for root-most superproject + initialized recursive submodules.
   - Snapshot id is printed as the last output line.
-  - Can accept explicit id: `git-snapshot create <snapshot_id>`.
+  - Skill default is explicit id (`git-snapshot create <snapshot_id>`), derived from user intent/context.
+  - Auto-id mode (`git-snapshot create`) is fallback-only unless user explicitly asks for it.
 
 - `git-snapshot list [--porcelain]`
   - Human output: table (id, created, age, repo count).
