@@ -29,7 +29,7 @@ Usage
   git-snapshot create [snapshot_id] [--clear] [--yes]
   git-snapshot rename <old_snapshot_id> <new_snapshot_id> [--porcelain]
   git-snapshot list [--porcelain]
-  git-snapshot inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--name-only|--stat|--diff] [--limit <n>|--no-limit] [--porcelain]
+  git-snapshot inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--name-only|--stat|--diff] [--porcelain]
   git-snapshot restore-check <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]
   git-snapshot verify <snapshot_id> [--repo <rel_path>] [--strict-head] [--porcelain]
   git-snapshot restore <snapshot_id>
@@ -77,23 +77,25 @@ list
   - one `snapshot\t...` line per snapshot
   - fields: id, created_at_epoch, repo_count, root_repo
 
-inspect
+  inspect
   Inspects captured bundle content without mutating current repos.
   This command shows what was captured, not what changed since capture.
   Default human output includes summary + per-repo `--stat` detail.
 
   Category flags (combine as needed):
-  - `--staged` `--unstaged` `--untracked` `--all` (default is all)
+  - `--staged`    : include staged category
+  - `--unstaged`  : include unstaged category
+  - `--untracked` : include untracked category
+  - `--all`       : include staged + unstaged + untracked
+  - default       : all categories enabled when no category flags are passed
 
   Scope/detail flags:
-  - `--all-repos` : include clean repos in summary output
-  - `--limit <n>` : cap listed files in detail mode (default 20)
-  - `--no-limit`  : disable file-list limits
+  - `--all-repos` : include clean repos in summary output (default: off, changed repos only)
 
   Render flags (mutually exclusive):
-  - `--name-only` : file paths only (detail mode)
-  - `--stat`      : git apply --stat summary (detail mode)
-  - `--diff`      : raw patch body (staged/unstaged)
+  - `--name-only` : file paths only (default: off)
+  - `--stat`      : git apply --stat summary (default: on)
+  - `--diff`      : raw patch body for staged/unstaged (default: off)
 
 restore-check
   Compares snapshot restore readiness against current tree (non-mutating):
@@ -179,7 +181,7 @@ Deep inspection:
   git-snapshot inspect before-rebase --stat
   git-snapshot inspect before-rebase --name-only
   git-snapshot inspect before-rebase --repo modules/sub1 --staged --diff
-  git-snapshot inspect before-rebase --all-repos --name-only --limit 50
+  git-snapshot inspect before-rebase --all-repos --name-only
   git-snapshot inspect before-rebase --porcelain
   git-snapshot restore-check before-rebase
   git-snapshot restore-check before-rebase --details
@@ -824,7 +826,6 @@ _git_snapshot_cmd_inspect() {
   local render_mode="stat"
   local render_flag_count=0
   local show_all_repos="false"
-  local limit="20"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -867,17 +868,6 @@ _git_snapshot_cmd_inspect() {
       --diff)
         render_mode="diff"
         render_flag_count=$((render_flag_count + 1))
-        ;;
-      --limit)
-        if [[ -z "${2:-}" ]]; then
-          _git_snapshot_ui_err "Missing value for --limit"
-          return 1
-        fi
-        limit="$(_git_snapshot_parse_positive_int "${2}" "--limit")" || return 1
-        shift
-        ;;
-      --no-limit)
-        limit="0"
         ;;
       -* )
         _git_snapshot_ui_err "Unknown option for inspect: $1"
@@ -1044,13 +1034,13 @@ _git_snapshot_cmd_inspect() {
     human_detail_label="$(_git_snapshot_human_repo_label "${root_repo}" "${summary_rel_path}")"
     printf "\nRepo: %s\n" "${human_detail_label}"
     if [[ "${include_staged}" == "true" ]]; then
-      _git_snapshot_diff_render_human_category "Staged" "${GSN_STAGED_FILES}" "${GSN_STAGED_COUNT}" "${render_mode}" "${staged_patch}" "${limit}"
+      _git_snapshot_diff_render_human_category "Staged" "${GSN_STAGED_FILES}" "${GSN_STAGED_COUNT}" "${render_mode}" "${staged_patch}" "0"
     fi
     if [[ "${include_unstaged}" == "true" ]]; then
-      _git_snapshot_diff_render_human_category "Unstaged" "${GSN_UNSTAGED_FILES}" "${GSN_UNSTAGED_COUNT}" "${render_mode}" "${unstaged_patch}" "${limit}"
+      _git_snapshot_diff_render_human_category "Unstaged" "${GSN_UNSTAGED_FILES}" "${GSN_UNSTAGED_COUNT}" "${render_mode}" "${unstaged_patch}" "0"
     fi
     if [[ "${include_untracked}" == "true" ]]; then
-      _git_snapshot_print_file_group_human_limited "Untracked" "${GSN_UNTRACKED_FILES}" "${GSN_UNTRACKED_COUNT}" "${limit}"
+      _git_snapshot_print_file_group_human_limited "Untracked" "${GSN_UNTRACKED_FILES}" "${GSN_UNTRACKED_COUNT}" "0"
     fi
   done <<< "${summary_rows}"
 
@@ -1520,7 +1510,7 @@ _git_snapshot_cmd_verify() {
 
     if [[ "${mismatch_count}" -gt 0 ]]; then
       printf "\nFollow-up commands for deeper details:\n"
-      printf "  - git-snapshot inspect %s%s --staged --unstaged --untracked --name-only --no-limit\n" "${snapshot_id}" "${repo_filter_cmd_fragment}"
+      printf "  - git-snapshot inspect %s%s --staged --unstaged --untracked --name-only\n" "${snapshot_id}" "${repo_filter_cmd_fragment}"
       printf "    Shows full captured file lists for staged/unstaged/untracked snapshot content.\n"
       printf "  - git-snapshot inspect %s%s --staged --unstaged --diff\n" "${snapshot_id}" "${repo_filter_cmd_fragment}"
       printf "    Shows full patch bodies for tracked snapshot changes.\n"

@@ -41,13 +41,16 @@ assert_contains "Details (name-only mode):" "${inspect_details_output}" "inspect
 assert_contains "Repo: super" "${inspect_details_output}" "inspect --name-only should include root repo section"
 assert_contains "root-untracked-1.txt" "${inspect_details_output}" "inspect --name-only should include file names"
 
-inspect_limited_output="$(cd "${root_repo}" && git_snapshot_test_cmd inspect "${snapshot_id}" --name-only --limit 2)"
-assert_contains "root-untracked-1.txt" "${inspect_limited_output}" "limited output should include some file names"
-assert_contains "... +3 more" "${inspect_limited_output}" "limited output should include truncation summary for untracked files"
-
-inspect_unlimited_output="$(cd "${root_repo}" && git_snapshot_test_cmd inspect "${snapshot_id}" --name-only --no-limit)"
-assert_contains "root-untracked-5.txt" "${inspect_unlimited_output}" "unlimited output should include all untracked files"
-assert_not_contains "... +" "${inspect_unlimited_output}" "unlimited output should not include truncation summary"
+set +e
+inspect_limit_removed_output="$(cd "${root_repo}" && git_snapshot_test_cmd inspect "${snapshot_id}" --name-only --limit 2 2>&1)"
+inspect_limit_removed_code=$?
+inspect_no_limit_removed_output="$(cd "${root_repo}" && git_snapshot_test_cmd inspect "${snapshot_id}" --name-only --no-limit 2>&1)"
+inspect_no_limit_removed_code=$?
+set -e
+assert_exit_code 1 "${inspect_limit_removed_code}" "inspect --limit should fail after hard removal"
+assert_contains "Unknown option for inspect: --limit" "${inspect_limit_removed_output}" "inspect --limit should be rejected"
+assert_exit_code 1 "${inspect_no_limit_removed_code}" "inspect --no-limit should fail after hard removal"
+assert_contains "Unknown option for inspect: --no-limit" "${inspect_no_limit_removed_output}" "inspect --no-limit should be rejected"
 
 inspect_diff_output="$(cd "${root_repo}" && git_snapshot_test_cmd inspect "${snapshot_id}" --diff)"
 assert_contains "Details (diff mode):" "${inspect_diff_output}" "inspect --diff should print diff detail mode"

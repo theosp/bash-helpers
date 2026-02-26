@@ -23,7 +23,7 @@
   - Human output: table (id, created, age, repo count).
   - Porcelain output: tab-delimited `snapshot` rows with key/value fields.
 
-- `git-snapshot inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--name-only|--stat|--diff] [--limit <n>|--no-limit] [--porcelain]`
+- `git-snapshot inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--name-only|--stat|--diff] [--porcelain]`
   - Human default includes summary plus per-repo `--stat` detail.
   - Use `--name-only` for file-path focused output.
   - Use `--diff` for full tracked patch bodies.

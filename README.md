@@ -145,21 +145,20 @@ Default behavior includes:
 - detailed `--stat` sections for changed repos
 
 Category flags:
-- `--staged`
-- `--unstaged`
-- `--untracked`
-- `--all` (default behavior if no category is selected)
+- `--staged`: include staged category
+- `--unstaged`: include unstaged category
+- `--untracked`: include untracked category
+- `--all`: include staged + unstaged + untracked
+- default: all categories enabled when no category flags are passed
 
 Render mode flags (mutually exclusive):
-- `--name-only`
-- `--stat`
-- `--diff`
+- `--name-only` (default: off)
+- `--stat` (default: on)
+- `--diff` (default: off)
 
 Other flags:
 - `--repo <rel_path>`
-- `--all-repos` (include clean repos in summary)
-- `--limit <n>` (limit listed files in detail mode, default `20`)
-- `--no-limit` (disable file-list limits)
+- `--all-repos` (default: off; include clean repos in summary)
 - `--porcelain`
 
 ### `git-snapshot restore-check <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]`

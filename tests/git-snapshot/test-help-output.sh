@@ -19,6 +19,8 @@ assert_contains "git-snapshot create [snapshot_id] [--clear] [--yes]" "${help_ou
 assert_contains "git-snapshot rename <old_snapshot_id> <new_snapshot_id>" "${help_output}" "help should document rename command"
 assert_contains "git-snapshot inspect <snapshot_id>" "${help_output}" "help should document inspect command"
 assert_contains "--name-only|--stat|--diff" "${help_output}" "help should document inspect render flags"
+assert_contains "\`--stat\`      : git apply --stat summary (default: on)" "${help_output}" "help should label inspect default render mode"
+assert_not_contains "inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--name-only|--stat|--diff] [--limit <n>|--no-limit]" "${help_output}" "inspect usage should not advertise removed limit flags"
 assert_contains "git-snapshot restore-check <snapshot_id>" "${help_output}" "help should document restore-check command"
 assert_contains "git-snapshot verify <snapshot_id>" "${help_output}" "help should document verify command"
 assert_contains "HEAD mismatch is warning-only" "${help_output}" "help should explain default verify head policy"

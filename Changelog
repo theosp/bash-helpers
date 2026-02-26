@@ -1,3 +1,19 @@
+v1.0.16 (2026-02-26)
+
+* Hard cut `inspect` file-limit flags:
+  - remove `inspect --limit <n>`
+  - remove `inspect --no-limit`
+  - keep inspect detail output unlimited by default.
+
+* Update `inspect` usage/help/docs/skill references to remove the limit options.
+
+* Update verify mismatch follow-up guidance to stop suggesting removed inspect
+  limit flags.
+
+* Update regression tests to enforce:
+  - inspect limit flags are rejected as unknown options
+  - help/docs no longer advertise inspect limit flags.
+
 v1.0.15 (2026-02-26)
 
 * Breaking CLI update for snapshot inspection:
