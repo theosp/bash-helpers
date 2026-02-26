@@ -12,6 +12,18 @@ _git_snapshot_ui_info() {
   printf "[git-snapshot] %s\n" "$*"
 }
 
+_git_snapshot_ui_human_repo_label() {
+  local root_repo="$1"
+  local rel_path="$2"
+
+  if [[ "${rel_path}" == "." ]]; then
+    basename "${root_repo}"
+    return 0
+  fi
+
+  printf "%s" "${rel_path}"
+}
+
 _git_snapshot_ui_confirm_yes_no() {
   local prompt="$1"
   local env_var_name="$2"

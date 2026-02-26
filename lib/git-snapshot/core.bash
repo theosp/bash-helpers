@@ -451,12 +451,7 @@ _git_snapshot_human_repo_label() {
   local root_repo="$1"
   local rel_path="$2"
 
-  if [[ "${rel_path}" == "." ]]; then
-    basename "${root_repo}"
-    return 0
-  fi
-
-  printf "%s" "${rel_path}"
+  _git_snapshot_ui_human_repo_label "${root_repo}" "${rel_path}"
 }
 
 _git_snapshot_print_lines_limited() {
@@ -493,6 +488,39 @@ _git_snapshot_print_file_group_human_limited() {
   fi
 
   _git_snapshot_print_lines_limited "${content}" "${limit}" "    - "
+}
+
+_git_snapshot_preview_lines_inline() {
+  local content="$1"
+  local limit="${2:-5}"
+  local total=0
+  local shown=0
+  local line
+  local preview=""
+
+  while IFS= read -r line; do
+    [[ -z "${line}" ]] && continue
+    total=$((total + 1))
+    if [[ "${shown}" -lt "${limit}" ]]; then
+      if [[ -n "${preview}" ]]; then
+        preview+=", "
+      fi
+      preview+="${line}"
+      shown=$((shown + 1))
+    fi
+  done <<< "${content}"
+
+  if [[ "${total}" -eq 0 ]]; then
+    printf "none"
+    return 0
+  fi
+
+  if [[ "${total}" -gt "${shown}" ]]; then
+    printf "%s (+%s more)" "${preview}" "$((total - shown))"
+    return 0
+  fi
+
+  printf "%s" "${preview}"
 }
 
 _git_snapshot_clear_single_repo() {
@@ -536,7 +564,7 @@ _git_snapshot_clear_from_snapshot() {
   local total_repos=0
   local cleared_repos=0
   local failed_repos=0
-  local repo_id rel_path _head _status_hash repo_abs failure_reason
+  local repo_id rel_path _head _status_hash repo_abs failure_reason human_repo_label
   local -a failures=()
   local drift_paths=""
   local drift_count=0
@@ -548,10 +576,11 @@ _git_snapshot_clear_from_snapshot() {
     [[ -z "${repo_id}" ]] && continue
     total_repos=$((total_repos + 1))
     repo_abs="${root_repo}/${rel_path}"
+    human_repo_label="$(_git_snapshot_human_repo_label "${root_repo}" "${rel_path}")"
 
     if ! failure_reason="$(_git_snapshot_clear_single_repo "${repo_abs}")"; then
       failed_repos=$((failed_repos + 1))
-      failures+=("${rel_path}: ${failure_reason}")
+      failures+=("${human_repo_label}: ${failure_reason}")
       continue
     fi
 
@@ -1512,6 +1541,7 @@ _git_snapshot_cmd_verify() {
     repos_checked=$((repos_checked + 1))
 
     local repo_abs repo_bundle_dir current_head
+    local human_repo_label
     local head_state="same"
     local staged_state="match"
     local unstaged_state="match"
@@ -1523,6 +1553,7 @@ _git_snapshot_cmd_verify() {
 
     repo_abs="${root_repo}/${rel_path}"
     repo_bundle_dir="$(_git_snapshot_store_repo_dir_for_id "${snapshot_path}" "${repo_id}")"
+    human_repo_label="$(_git_snapshot_human_repo_label "${root_repo}" "${rel_path}")"
 
     if ! git -C "${repo_abs}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
       head_state="missing"
@@ -1530,28 +1561,43 @@ _git_snapshot_cmd_verify() {
       unstaged_state="missing"
       untracked_state="missing"
       has_mismatch="true"
-      repo_mismatch_rows+="repo missing at path=${rel_path}"$'\n'
+      repo_mismatch_rows+="${human_repo_label}: repo missing at path=${human_repo_label}"$'\n'
     else
       current_head="$(git -C "${repo_abs}" rev-parse HEAD 2>/dev/null || true)"
       if [[ "${current_head}" != "${snapshot_head}" ]]; then
         head_state="mismatch"
         if [[ "${strict_head}" == "true" ]]; then
           has_mismatch="true"
-          repo_mismatch_rows+="head mismatch snapshot=${snapshot_head} current=${current_head}"$'\n'
+          repo_mismatch_rows+="${human_repo_label}: head mismatch snapshot=${snapshot_head} current=${current_head}"$'\n'
         else
           has_warning="true"
-          repo_warning_rows+="head mismatch snapshot=${snapshot_head} current=${current_head}"$'\n'
+          repo_warning_rows+="${human_repo_label}: head mismatch snapshot=${snapshot_head} current=${current_head}"$'\n'
         fi
       fi
 
       local expected_staged_hash current_staged_hash
+      local expected_staged_files current_staged_files
+      local expected_staged_count current_staged_count
+      local expected_staged_preview current_staged_preview
       local expected_unstaged_hash current_unstaged_hash
+      local expected_unstaged_files current_unstaged_files
+      local expected_unstaged_count current_unstaged_count
+      local expected_unstaged_preview current_unstaged_preview
+      local expected_untracked_files current_untracked_files
+      local expected_untracked_count current_untracked_count
+      local expected_untracked_preview current_untracked_preview
       expected_staged_hash="$(shasum -a 256 "${repo_bundle_dir}/staged.patch" | awk '{print $1}')"
       current_staged_hash="$(git -C "${repo_abs}" diff --cached --binary | shasum -a 256 | awk '{print $1}')"
       if [[ "${expected_staged_hash}" != "${current_staged_hash}" ]]; then
         staged_state="mismatch"
         has_mismatch="true"
-        repo_mismatch_rows+="staged patch differs"$'\n'
+        expected_staged_files="$(_git_snapshot_inspect_patch_files "${repo_bundle_dir}/staged.patch")"
+        current_staged_files="$(git -C "${repo_abs}" diff --cached --name-only | sed '/^$/d')"
+        expected_staged_count="$(_git_snapshot_inspect_count_lines "${expected_staged_files}")"
+        current_staged_count="$(_git_snapshot_inspect_count_lines "${current_staged_files}")"
+        expected_staged_preview="$(_git_snapshot_preview_lines_inline "${expected_staged_files}" 5)"
+        current_staged_preview="$(_git_snapshot_preview_lines_inline "${current_staged_files}" 5)"
+        repo_mismatch_rows+="${human_repo_label}: staged patch differs (snapshot=${expected_staged_count} [${expected_staged_preview}] | current=${current_staged_count} [${current_staged_preview}])"$'\n'
       fi
 
       expected_unstaged_hash="$(shasum -a 256 "${repo_bundle_dir}/unstaged.patch" | awk '{print $1}')"
@@ -1559,7 +1605,13 @@ _git_snapshot_cmd_verify() {
       if [[ "${expected_unstaged_hash}" != "${current_unstaged_hash}" ]]; then
         unstaged_state="mismatch"
         has_mismatch="true"
-        repo_mismatch_rows+="unstaged patch differs"$'\n'
+        expected_unstaged_files="$(_git_snapshot_inspect_patch_files "${repo_bundle_dir}/unstaged.patch")"
+        current_unstaged_files="$(git -C "${repo_abs}" diff --name-only | sed '/^$/d')"
+        expected_unstaged_count="$(_git_snapshot_inspect_count_lines "${expected_unstaged_files}")"
+        current_unstaged_count="$(_git_snapshot_inspect_count_lines "${current_unstaged_files}")"
+        expected_unstaged_preview="$(_git_snapshot_preview_lines_inline "${expected_unstaged_files}" 5)"
+        current_unstaged_preview="$(_git_snapshot_preview_lines_inline "${current_unstaged_files}" 5)"
+        repo_mismatch_rows+="${human_repo_label}: unstaged patch differs (snapshot=${expected_unstaged_count} [${expected_unstaged_preview}] | current=${current_unstaged_count} [${current_unstaged_preview}])"$'\n'
       fi
 
       local expected_untracked_manifest current_untracked_manifest
@@ -1570,7 +1622,13 @@ _git_snapshot_cmd_verify() {
       if ! cmp -s "${expected_untracked_manifest}" "${current_untracked_manifest}"; then
         untracked_state="mismatch"
         has_mismatch="true"
-        repo_mismatch_rows+="untracked set/content differs"$'\n'
+        expected_untracked_files="$(_git_snapshot_inspect_tar_files "${repo_bundle_dir}/untracked.tar")"
+        current_untracked_files="$(git -C "${repo_abs}" ls-files --others --exclude-standard | sed '/^$/d')"
+        expected_untracked_count="$(_git_snapshot_inspect_count_lines "${expected_untracked_files}")"
+        current_untracked_count="$(_git_snapshot_inspect_count_lines "${current_untracked_files}")"
+        expected_untracked_preview="$(_git_snapshot_preview_lines_inline "${expected_untracked_files}" 5)"
+        current_untracked_preview="$(_git_snapshot_preview_lines_inline "${current_untracked_files}" 5)"
+        repo_mismatch_rows+="${human_repo_label}: untracked set/content differs (snapshot=${expected_untracked_count} [${expected_untracked_preview}] | current=${current_untracked_count} [${current_untracked_preview}])"$'\n'
       fi
       rm -f "${expected_untracked_manifest}" "${current_untracked_manifest}"
     fi
@@ -1579,14 +1637,14 @@ _git_snapshot_cmd_verify() {
       mismatch_count=$((mismatch_count + 1))
       while IFS= read -r row; do
         [[ -z "${row}" ]] && continue
-        mismatch_rows+="${rel_path}: ${row}"$'\n'
+        mismatch_rows+="${row}"$'\n'
       done <<< "${repo_mismatch_rows}"
     fi
     if [[ "${has_warning}" == "true" ]]; then
       warning_count=$((warning_count + 1))
       while IFS= read -r row; do
         [[ -z "${row}" ]] && continue
-        warning_rows+="${rel_path}: ${row}"$'\n'
+        warning_rows+="${row}"$'\n'
       done <<< "${repo_warning_rows}"
     fi
 

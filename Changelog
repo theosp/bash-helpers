@@ -1,3 +1,19 @@
+v1.0.13 (2026-02-26)
+
+* Move root-repo display normalization to a shared UI helper so human-facing
+  output consistently shows the root folder name instead of `.`.
+
+* Apply the shared root-label rule to additional runtime paths:
+  - restore warnings/errors
+  - clear failure summaries
+  - verify mismatch/warning lines.
+
+* Improve `verify` mismatch readability with concise snapshot-vs-current file
+  previews for staged/unstaged/untracked differences.
+
+* Expand regression coverage for root-label consistency and verify mismatch
+  diagnostics in restore/verify tests.
+
 v1.0.12 (2026-02-26)
 
 * Add post-success `verify` hint in default mode explaining how to run

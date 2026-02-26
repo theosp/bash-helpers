@@ -23,6 +23,7 @@ git -C "${root_repo}" commit -m "move head unrelated" >/dev/null
 export GIT_SNAPSHOT_CONFIRM_RESTORE="RESTORE"
 restore_ok_output="$(cd "${root_repo}" && git_snapshot_test_cmd restore "${snapshot_id_ok}" 2>&1)"
 assert_contains "HEAD mismatch" "${restore_ok_output}" "warning should mention head mismatch"
+assert_contains "HEAD mismatch for super" "${restore_ok_output}" "root repo should be rendered with human label"
 assert_contains "Restore completed successfully" "${restore_ok_output}" "compatible mismatch should restore"
 
 # Case B: HEAD mismatch with conflicting content should fail.
@@ -42,6 +43,7 @@ set -e
 
 assert_exit_code 1 "${restore_fail_code}" "conflicting head mismatch should fail"
 assert_contains "HEAD mismatch" "${restore_fail_output}" "warning should mention head mismatch"
+assert_contains "HEAD mismatch for super" "${restore_fail_output}" "root repo should be rendered with human label"
 if [[ "${restore_fail_output}" != *"Restore failed while applying bundles"* && "${restore_fail_output}" != *"Status hash mismatch"* ]]; then
   fail "Expected restore failure details in output. Output: ${restore_fail_output}"
 fi

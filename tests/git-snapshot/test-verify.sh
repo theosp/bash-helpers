@@ -35,6 +35,7 @@ assert_exit_code 0 "${verify_head_warning_code}" "default verify should not fail
 assert_contains "warnings: 1" "${verify_head_warning_output}" "head mismatch should be warning in default mode"
 assert_contains "mismatches: 0" "${verify_head_warning_output}" "head mismatch should not count as mismatch in default mode"
 assert_contains "head mismatch" "${verify_head_warning_output}" "default verify should explain head mismatch warning"
+assert_contains "super: head mismatch" "${verify_head_warning_output}" "default verify should print human repo label for root repo"
 
 set +e
 verify_head_strict_output="$(cd "${root_repo}" && git_snapshot_test_cmd verify "${snapshot_id}" --strict-head 2>&1)"
@@ -59,6 +60,8 @@ verify_staged_code=$?
 set -e
 assert_exit_code 3 "${verify_staged_code}" "verify should fail when staged patch differs"
 assert_contains "staged patch differs" "${verify_staged_output}" "verify should report staged mismatch"
+assert_contains "super: staged patch differs (snapshot=" "${verify_staged_output}" "verify staged mismatch should include root repo label and summary"
+assert_contains "current=1 [root.txt]" "${verify_staged_output}" "verify staged mismatch should include current file preview"
 git -C "${root_repo}" reset --hard >/dev/null
 
 printf "unstaged-delta\n" >> "${root_repo}/root.txt"
@@ -68,6 +71,8 @@ verify_unstaged_code=$?
 set -e
 assert_exit_code 3 "${verify_unstaged_code}" "verify should fail when unstaged patch differs"
 assert_contains "unstaged patch differs" "${verify_unstaged_output}" "verify should report unstaged mismatch"
+assert_contains "super: unstaged patch differs (snapshot=" "${verify_unstaged_output}" "verify unstaged mismatch should include root repo label and summary"
+assert_contains "current=1 [root.txt]" "${verify_unstaged_output}" "verify unstaged mismatch should include current file preview"
 git -C "${root_repo}" reset --hard >/dev/null
 
 printf "untracked-delta\n" > "${root_repo}/verify-untracked.txt"
@@ -77,6 +82,8 @@ verify_untracked_code=$?
 set -e
 assert_exit_code 3 "${verify_untracked_code}" "verify should fail when untracked set/content differs"
 assert_contains "untracked set/content differs" "${verify_untracked_output}" "verify should report untracked mismatch"
+assert_contains "super: untracked set/content differs (snapshot=" "${verify_untracked_output}" "verify untracked mismatch should include root repo label and summary"
+assert_contains "current=1 [verify-untracked.txt]" "${verify_untracked_output}" "verify untracked mismatch should include current file preview"
 git -C "${root_repo}" clean -fd >/dev/null
 
 verify_porcelain_output="$(cd "${root_repo}" && git_snapshot_test_cmd verify "${second_snapshot_id}" --repo . --porcelain)"

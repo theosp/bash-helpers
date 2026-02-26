@@ -85,27 +85,28 @@ _git_snapshot_restore_with_optional_rollback() {
 
   local restore_failed=false
   local mismatch_lines=()
-  local rel_path head_expected current_head repo_abs repo_bundle_dir status_hash_expected status_hash_actual repo_id
+  local rel_path head_expected current_head repo_abs repo_bundle_dir status_hash_expected status_hash_actual repo_id human_repo_label
 
   while IFS=$'\t' read -r repo_id rel_path head_expected status_hash_expected; do
     [[ -z "${repo_id}" ]] && continue
     repo_abs="${root_repo}/${rel_path}"
+    human_repo_label="$(_git_snapshot_ui_human_repo_label "${root_repo}" "${rel_path}")"
     repo_bundle_dir="$(_git_snapshot_store_repo_dir_for_id "${target_snapshot_path}" "${repo_id}")"
 
     current_head="$(git -C "${repo_abs}" rev-parse HEAD 2>/dev/null || true)"
     if [[ "${current_head}" != "${head_expected}" ]]; then
-      _git_snapshot_ui_warn "HEAD mismatch for ${rel_path}: snapshot=${head_expected}, current=${current_head}; attempting best-effort restore."
+      _git_snapshot_ui_warn "HEAD mismatch for ${human_repo_label}: snapshot=${head_expected}, current=${current_head}; attempting best-effort restore."
     fi
 
     if ! _git_snapshot_restore_single_repo "${repo_abs}" "${repo_bundle_dir}"; then
-      _git_snapshot_ui_err "Restore failed while applying bundles for repo=${rel_path}"
+      _git_snapshot_ui_err "Restore failed while applying bundles for repo=${human_repo_label}"
       restore_failed=true
       break
     fi
 
     status_hash_actual="$(_git_snapshot_status_hash_for_repo "${repo_abs}")"
     if [[ "${status_hash_actual}" != "${status_hash_expected}" ]]; then
-      mismatch_lines+=("${rel_path}: expected=${status_hash_expected} actual=${status_hash_actual}")
+      mismatch_lines+=("${human_repo_label}: expected=${status_hash_expected} actual=${status_hash_actual}")
       restore_failed=true
     fi
   done < <(_git_snapshot_store_read_repo_entries "${target_snapshot_path}")
