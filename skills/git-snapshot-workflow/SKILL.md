@@ -43,8 +43,8 @@ Follow this sequence and report each step.
   - mention that clear is destructive for current unstaged/staged/untracked (non-ignored) state
 
 2. Verify snapshot
-- Run: `git-snapshot show <snapshot_id>`
-- Confirm metadata is present: snapshot id, root repo path, repo count, per-repo entries.
+- Run: `git-snapshot inspect <snapshot_id>`
+- Confirm captured content summary and per-repo stat details are present.
 - Run: `git-snapshot verify <snapshot_id>`
   - default mode verifies captured working-set parity (staged/unstaged/untracked)
   - default mode treats HEAD mismatch as warning-only
@@ -57,7 +57,7 @@ Follow this sequence and report each step.
   - `GIT_SNAPSHOT_CONFIRM_RESTORE=RESTORE git-snapshot restore <snapshot_id>`
 
 4. Post-restore verification
-- Re-run: `git-snapshot show <snapshot_id>`.
+- Re-run: `git-snapshot inspect <snapshot_id>`.
 - Re-run: `git-snapshot verify <snapshot_id>` (default mode unless strict commit parity is required).
 - Check repo status/helper output and summarize whether restore matched expected state.
 

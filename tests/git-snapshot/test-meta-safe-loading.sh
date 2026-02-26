@@ -28,7 +28,23 @@ sentinel_file="${TEST_SANDBOX}/meta-injection-sentinel.txt"
   printf "REPO_COUNT=1\n"
 } > "${meta_file}"
 
-show_output="$(cd "${root_repo}" && git_snapshot_test_cmd show "${snapshot_id}")"
-assert_contains "Snapshot: ${snapshot_id}" "${show_output}" "show should still work with legacy metadata fallback"
-assert_contains "Root: \$(touch ${sentinel_file})" "${show_output}" "legacy metadata should be treated as inert text"
+list_porcelain_output="$(cd "${root_repo}" && git_snapshot_test_cmd list --porcelain)"
+row_for_snapshot="$(printf "%s\n" "${list_porcelain_output}" | awk -F'\t' -v sid="${snapshot_id}" '
+  $1 == "snapshot" {
+    id = ""
+    for (i = 2; i <= NF; i++) {
+      split($i, kv, "=")
+      if (kv[1] == "id") {
+        id = kv[2]
+        break
+      }
+    }
+    if (id == sid) {
+      print $0
+      exit
+    }
+  }
+')"
+assert_contains $'snapshot\tid='"${snapshot_id}" "${row_for_snapshot}" "list should still work with legacy metadata fallback"
+assert_contains "root_repo=\$(touch ${sentinel_file})" "${row_for_snapshot}" "legacy metadata should be treated as inert text"
 assert_file_not_exists "${sentinel_file}" "metadata loading must not execute command substitutions"

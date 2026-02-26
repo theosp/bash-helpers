@@ -65,7 +65,8 @@ assert_contains "staged patch differs" "${verify_staged_output}" "verify should 
 assert_contains "super: staged patch differs (snapshot=" "${verify_staged_output}" "verify staged mismatch should include root repo label and summary"
 assert_contains "current=1 [root.txt]" "${verify_staged_output}" "verify staged mismatch should include current file preview"
 assert_contains "Follow-up commands for deeper details:" "${verify_staged_output}" "mismatch verify should print follow-up guidance"
-assert_contains "git-snapshot inspect ${second_snapshot_id} --repo . --staged --unstaged --untracked --files --no-limit" "${verify_staged_output}" "follow-up guidance should include detailed inspect command"
+assert_contains "git-snapshot inspect ${second_snapshot_id} --repo . --staged --unstaged --untracked --name-only --no-limit" "${verify_staged_output}" "follow-up guidance should include detailed inspect command"
+assert_contains "git-snapshot inspect ${second_snapshot_id} --repo . --staged --unstaged --diff" "${verify_staged_output}" "follow-up guidance should include inspect diff command"
 assert_contains "git-snapshot restore-check ${second_snapshot_id} --repo . --details --files --no-limit" "${verify_staged_output}" "follow-up guidance should include restore-check command"
 git -C "${root_repo}" reset --hard >/dev/null
 

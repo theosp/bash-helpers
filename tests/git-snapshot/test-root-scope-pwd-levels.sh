@@ -22,6 +22,22 @@ for pwd_entry in \
   "${sub2}/."; do
   out="$(cd "${pwd_entry}" && git_snapshot_test_cmd create)"
   sid="$(git_snapshot_test_get_snapshot_id_from_create_output "${out}")"
-  show_out="$(cd "${pwd_entry}" && git_snapshot_test_cmd show "${sid}" --porcelain)"
-  assert_contains "root_repo=${canonical_root}" "${show_out}" "scope should always resolve to root-most superproject"
+  list_out="$(cd "${pwd_entry}" && git_snapshot_test_cmd list --porcelain)"
+  snapshot_row="$(printf "%s\n" "${list_out}" | awk -F'\t' -v sid="${sid}" '
+    $1 == "snapshot" {
+      id = ""
+      for (i = 2; i <= NF; i++) {
+        split($i, kv, "=")
+        if (kv[1] == "id") {
+          id = kv[2]
+          break
+        }
+      }
+      if (id == sid) {
+        print $0
+        exit
+      }
+    }
+  ')"
+  assert_contains "root_repo=${canonical_root}" "${snapshot_row}" "scope should always resolve to root-most superproject"
 done

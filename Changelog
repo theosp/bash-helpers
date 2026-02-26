@@ -1,3 +1,25 @@
+v1.0.15 (2026-02-26)
+
+* Breaking CLI update for snapshot inspection:
+  - remove `git-snapshot show` entirely (hard cut, no compatibility alias)
+  - standardize inspection on `git-snapshot inspect`.
+
+* Change `inspect` default behavior to immediate stat-focused detail:
+  - default render mode is now `--stat`
+  - summary remains, followed by per-repo detail sections.
+
+* Simplify inspect render flags:
+  - remove `--files`
+  - rename `--patch` to `--diff`
+  - keep `--name-only` and `--stat`.
+
+* Update verify mismatch follow-up guidance to new inspect flags:
+  - suggest `--name-only` for full file inventories
+  - suggest `--diff` for tracked patch bodies.
+
+* Update README, shared skill contract, and regression tests to match the new
+  command model and enforce hard removal of `show`.
+
 v1.0.14 (2026-02-26)
 
 * Breaking CLI rename:

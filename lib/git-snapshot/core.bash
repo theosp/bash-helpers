@@ -29,8 +29,7 @@ Usage
   git-snapshot create [snapshot_id] [--clear] [--yes]
   git-snapshot rename <old_snapshot_id> <new_snapshot_id> [--porcelain]
   git-snapshot list [--porcelain]
-  git-snapshot show <snapshot_id> [--repo <rel_path>] [--verbose] [--porcelain]
-  git-snapshot inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--files|--name-only|--stat|--patch] [--limit <n>|--no-limit] [--porcelain]
+  git-snapshot inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--name-only|--stat|--diff] [--limit <n>|--no-limit] [--porcelain]
   git-snapshot restore-check <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]
   git-snapshot verify <snapshot_id> [--repo <rel_path>] [--strict-head] [--porcelain]
   git-snapshot restore <snapshot_id>
@@ -78,49 +77,23 @@ list
   - one `snapshot\t...` line per snapshot
   - fields: id, created_at_epoch, repo_count, root_repo
 
-show
-  Explains a snapshot in depth and prints per-repo sections:
-  - snapshot commit and refs
-  - current commit and refs
-  - relation to current HEAD:
-    - same
-    - current-ahead
-    - current-behind
-    - diverged
-    - unrelated
-    - missing
-  - captured file inventory:
-    - staged files
-    - unstaged files
-    - untracked files
-  - restore readiness signals:
-    - apply staged (ok/fail/none)
-    - apply unstaged (ok/fail/none)
-    - untracked collisions count
-
-  Flags:
-  - `--repo <rel_path>` : restrict to one repo path from the snapshot
-  - `--verbose`         : include internal metadata (checksum, full hashes, bundle path)
-  - `--porcelain`       : stable machine format
-
 inspect
   Inspects captured bundle content without mutating current repos.
   This command shows what was captured, not what changed since capture.
-  Default human output is summary-first (repo/file counts, changed repos only).
+  Default human output includes summary + per-repo `--stat` detail.
 
   Category flags (combine as needed):
   - `--staged` `--unstaged` `--untracked` `--all` (default is all)
 
-  Summary/detail flags:
+  Scope/detail flags:
   - `--all-repos` : include clean repos in summary output
-  - `--files`     : per-file listing (same as `--name-only`)
   - `--limit <n>` : cap listed files in detail mode (default 20)
   - `--no-limit`  : disable file-list limits
 
   Render flags (mutually exclusive):
   - `--name-only` : file paths only (detail mode)
   - `--stat`      : git apply --stat summary (detail mode)
-  - `--patch`     : raw patch body (staged/unstaged)
+  - `--diff`      : raw patch body (staged/unstaged)
 
 restore-check
   Compares snapshot restore readiness against current tree (non-mutating):
@@ -196,18 +169,17 @@ Create and inspect:
   git-snapshot create before-task-switch --clear
   git-snapshot rename before-rebase before-rebase-validated
   git-snapshot list
-  git-snapshot show before-rebase
 
 Machine output:
   git-snapshot list --porcelain
-  git-snapshot show before-rebase --porcelain
+  git-snapshot inspect before-rebase --porcelain
 
 Deep inspection:
   git-snapshot inspect before-rebase
   git-snapshot inspect before-rebase --stat
   git-snapshot inspect before-rebase --name-only
-  git-snapshot inspect before-rebase --repo modules/sub1 --staged --patch
-  git-snapshot inspect before-rebase --all-repos --files --limit 50
+  git-snapshot inspect before-rebase --repo modules/sub1 --staged --diff
+  git-snapshot inspect before-rebase --all-repos --name-only --limit 50
   git-snapshot inspect before-rebase --porcelain
   git-snapshot restore-check before-rebase
   git-snapshot restore-check before-rebase --details
@@ -800,135 +772,6 @@ _git_snapshot_cmd_list() {
   done < <(printf "%s" "${rows}" | sort -rn)
 }
 
-_git_snapshot_cmd_show() {
-  local root_repo="$1"
-  shift
-
-  local snapshot_id=""
-  local porcelain="false"
-  local verbose="false"
-  local repo_filter=""
-
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --porcelain)
-        porcelain="true"
-        ;;
-      --verbose)
-        verbose="true"
-        ;;
-      --repo)
-        if [[ -z "${2:-}" ]]; then
-          _git_snapshot_ui_err "Missing value for --repo"
-          return 1
-        fi
-        repo_filter="$2"
-        shift
-        ;;
-      -* )
-        _git_snapshot_ui_err "Unknown option for show: $1"
-        return 1
-        ;;
-      *)
-        if [[ -z "${snapshot_id}" ]]; then
-          snapshot_id="$1"
-        else
-          _git_snapshot_ui_err "Unexpected argument for show: $1"
-          return 1
-        fi
-        ;;
-    esac
-    shift
-  done
-
-  if [[ -z "${snapshot_id}" ]]; then
-    _git_snapshot_ui_err "Missing snapshot_id for show"
-    return 1
-  fi
-
-  _git_snapshot_validate_snapshot_id "${snapshot_id}"
-  _git_snapshot_store_assert_snapshot_exists "${root_repo}" "${snapshot_id}"
-
-  local snapshot_path
-  snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
-  _git_snapshot_store_load_snapshot_meta "${snapshot_path}"
-
-  if [[ -n "${repo_filter}" ]]; then
-    _git_snapshot_validate_repo_filter "${snapshot_path}" "${repo_filter}"
-  fi
-
-  if [[ "${porcelain}" == "true" ]]; then
-    printf "snapshot_id=%s\n" "${SNAPSHOT_ID}"
-    printf "created_at_epoch=%s\n" "${CREATED_AT_EPOCH}"
-    printf "root_repo=%s\n" "${ROOT_REPO}"
-    printf "repo_count=%s\n" "${REPO_COUNT}"
-  else
-    printf "Snapshot: %s\n" "${SNAPSHOT_ID}"
-    printf "Root: %s\n" "${ROOT_REPO}"
-    printf "Created: %s (%s ago)\n" "$(_git_snapshot_inspect_format_epoch_local "${CREATED_AT_EPOCH}")" "$(_git_snapshot_inspect_age "${CREATED_AT_EPOCH}")"
-    printf "Repos: %s\n" "${REPO_COUNT}"
-  fi
-
-  local repo_id rel_path snapshot_head status_hash
-  while IFS=$'\t' read -r repo_id rel_path snapshot_head status_hash; do
-    [[ -z "${repo_id}" ]] && continue
-    if [[ -n "${repo_filter}" && "${rel_path}" != "${repo_filter}" ]]; then
-      continue
-    fi
-
-    _git_snapshot_calculate_repo_state "${root_repo}" "${snapshot_path}" "${repo_id}" "${rel_path}" "${snapshot_head}" "${status_hash}"
-
-    local snapshot_head_short current_head_short
-    snapshot_head_short="$(_git_snapshot_inspect_shorten_hash "${GSN_SNAPSHOT_HEAD}")"
-    current_head_short="$(_git_snapshot_inspect_shorten_hash "${GSN_CURRENT_HEAD}")"
-
-    if [[ "${porcelain}" == "true" ]]; then
-      printf "repo\tid=%s\tpath=%s\tsnapshot_head=%s\tcurrent_head=%s\trelation=%s\tahead=%s\tbehind=%s\tsnapshot_branches=%s\tsnapshot_tags=%s\tcurrent_branch=%s\tcurrent_tags=%s\tstaged_count=%s\tunstaged_count=%s\tuntracked_count=%s\tapply_check_staged=%s\tapply_check_unstaged=%s\tuntracked_collision_count=%s\n" \
-        "${repo_id}" "${rel_path}" "${GSN_SNAPSHOT_HEAD}" "${GSN_CURRENT_HEAD}" "${GSN_RELATION}" "${GSN_AHEAD_COUNT}" "${GSN_BEHIND_COUNT}" "${GSN_SNAPSHOT_BRANCHES_CSV}" "${GSN_SNAPSHOT_TAGS_CSV}" "${GSN_CURRENT_BRANCH}" "${GSN_CURRENT_TAGS_CSV}" "${GSN_STAGED_COUNT}" "${GSN_UNSTAGED_COUNT}" "${GSN_UNTRACKED_COUNT}" "${GSN_APPLY_CHECK_STAGED}" "${GSN_APPLY_CHECK_UNSTAGED}" "${GSN_UNTRACKED_COLLISION_COUNT}"
-      if [[ "${verbose}" == "true" ]]; then
-        printf "repo_debug\tid=%s\tpath=%s\tintegrity_checksum=%s\tbundle_dir=%s\n" "${repo_id}" "${rel_path}" "${GSN_STATUS_HASH}" "${GSN_REPO_BUNDLE_DIR}"
-      fi
-      continue
-    fi
-
-    local human_repo_label
-    human_repo_label="$(_git_snapshot_human_repo_label "${root_repo}" "${rel_path}")"
-    printf "\nRepo: %s\n" "${human_repo_label}"
-    printf "  Snapshot commit: %s (branches: %s; tags: %s)\n" "${snapshot_head_short}" "${GSN_SNAPSHOT_BRANCHES_CSV}" "${GSN_SNAPSHOT_TAGS_CSV}"
-    printf "  Current commit:  %s (branch: %s; tags: %s)\n" "${current_head_short}" "${GSN_CURRENT_BRANCH}" "${GSN_CURRENT_TAGS_CSV}"
-
-    if [[ "${GSN_RELATION}" == "same" || "${GSN_RELATION}" == "missing" ]]; then
-      printf "  Relation: %s\n" "${GSN_RELATION}"
-    else
-      printf "  Relation: %s (ahead %s, behind %s)\n" "${GSN_RELATION}" "${GSN_AHEAD_COUNT}" "${GSN_BEHIND_COUNT}"
-    fi
-
-    _git_snapshot_print_file_group_human "Staged" "${GSN_STAGED_FILES}" "${GSN_STAGED_COUNT}"
-    _git_snapshot_print_file_group_human "Unstaged" "${GSN_UNSTAGED_FILES}" "${GSN_UNSTAGED_COUNT}"
-    _git_snapshot_print_file_group_human "Untracked" "${GSN_UNTRACKED_FILES}" "${GSN_UNTRACKED_COUNT}"
-
-    printf "  Restore readiness:\n"
-    printf "    - apply staged: %s\n" "${GSN_APPLY_CHECK_STAGED}"
-    printf "    - apply unstaged: %s\n" "${GSN_APPLY_CHECK_UNSTAGED}"
-    printf "    - untracked collisions: %s\n" "${GSN_UNTRACKED_COLLISION_COUNT}"
-
-    if [[ "${GSN_UNTRACKED_COLLISION_COUNT}" != "0" ]]; then
-      while IFS= read -r collision; do
-        [[ -z "${collision}" ]] && continue
-        printf "      * %s\n" "${collision}"
-      done <<< "${GSN_UNTRACKED_COLLISIONS}"
-    fi
-
-    if [[ "${verbose}" == "true" ]]; then
-      printf "  Internal:\n"
-      printf "    - integrity checksum: %s\n" "${GSN_STATUS_HASH}"
-      printf "    - bundle dir: %s\n" "${GSN_REPO_BUNDLE_DIR}"
-      printf "    - snapshot head (full): %s\n" "${GSN_SNAPSHOT_HEAD}"
-      printf "    - current head (full): %s\n" "${GSN_CURRENT_HEAD}"
-    fi
-  done < <(_git_snapshot_store_read_repo_entries "${snapshot_path}")
-}
-
 _git_snapshot_diff_render_human_category() {
   local title="$1"
   local files="$2"
@@ -960,7 +803,7 @@ _git_snapshot_diff_render_human_category() {
         done <<< "${stat_out}"
       fi
       ;;
-    patch)
+    diff)
       while IFS= read -r patch_line; do
         printf "    %s\n" "${patch_line}"
       done < "${patch_file}"
@@ -978,7 +821,7 @@ _git_snapshot_cmd_inspect() {
   local include_staged="false"
   local include_unstaged="false"
   local include_untracked="false"
-  local render_mode="summary"
+  local render_mode="stat"
   local render_flag_count=0
   local show_all_repos="false"
   local limit="20"
@@ -1013,10 +856,6 @@ _git_snapshot_cmd_inspect() {
       --all-repos)
         show_all_repos="true"
         ;;
-      --files)
-        render_mode="name-only"
-        render_flag_count=$((render_flag_count + 1))
-        ;;
       --name-only)
         render_mode="name-only"
         render_flag_count=$((render_flag_count + 1))
@@ -1025,8 +864,8 @@ _git_snapshot_cmd_inspect() {
         render_mode="stat"
         render_flag_count=$((render_flag_count + 1))
         ;;
-      --patch)
-        render_mode="patch"
+      --diff)
+        render_mode="diff"
         render_flag_count=$((render_flag_count + 1))
         ;;
       --limit)
@@ -1061,7 +900,7 @@ _git_snapshot_cmd_inspect() {
     return 1
   fi
   if (( render_flag_count > 1 )); then
-    _git_snapshot_ui_err "Only one of --files/--name-only/--stat/--patch is allowed"
+    _git_snapshot_ui_err "Only one of --name-only/--stat/--diff is allowed"
     return 1
   fi
 
@@ -1113,11 +952,6 @@ _git_snapshot_cmd_inspect() {
       fi
     done < <(_git_snapshot_store_read_repo_entries "${snapshot_path}")
     return 0
-  fi
-
-  local show_details="false"
-  if [[ "${render_mode}" != "summary" ]]; then
-    show_details="true"
   fi
 
   local repos_in_scope=0
@@ -1194,11 +1028,6 @@ _git_snapshot_cmd_inspect() {
     printf "    staged=%s unstaged=%s untracked=%s\n" "${summary_staged}" "${summary_unstaged}" "${summary_untracked}"
   done <<< "${summary_rows}"
 
-  if [[ "${show_details}" != "true" ]]; then
-    printf "\nHint: use --files, --stat, or --patch for per-file detail. Add --all-repos to include clean repos.\n"
-    return 0
-  fi
-
   printf "\nDetails (%s mode):\n" "${render_mode}"
   while IFS=$'\t' read -r summary_repo_id summary_rel_path summary_snapshot_head summary_status_hash summary_staged summary_unstaged summary_untracked summary_has_changes; do
     [[ -z "${summary_repo_id}" ]] && continue
@@ -1224,6 +1053,8 @@ _git_snapshot_cmd_inspect() {
       _git_snapshot_print_file_group_human_limited "Untracked" "${GSN_UNTRACKED_FILES}" "${GSN_UNTRACKED_COUNT}" "${limit}"
     fi
   done <<< "${summary_rows}"
+
+  printf "\nHint: use --name-only for file paths or --diff for full patch output. Add --all-repos to include clean repos.\n"
 }
 
 _git_snapshot_cmd_restore_check() {
@@ -1689,9 +1520,9 @@ _git_snapshot_cmd_verify() {
 
     if [[ "${mismatch_count}" -gt 0 ]]; then
       printf "\nFollow-up commands for deeper details:\n"
-      printf "  - git-snapshot inspect %s%s --staged --unstaged --untracked --files --no-limit\n" "${snapshot_id}" "${repo_filter_cmd_fragment}"
+      printf "  - git-snapshot inspect %s%s --staged --unstaged --untracked --name-only --no-limit\n" "${snapshot_id}" "${repo_filter_cmd_fragment}"
       printf "    Shows full captured file lists for staged/unstaged/untracked snapshot content.\n"
-      printf "  - git-snapshot inspect %s%s --staged --unstaged --patch\n" "${snapshot_id}" "${repo_filter_cmd_fragment}"
+      printf "  - git-snapshot inspect %s%s --staged --unstaged --diff\n" "${snapshot_id}" "${repo_filter_cmd_fragment}"
       printf "    Shows full patch bodies for tracked snapshot changes.\n"
       printf "  - git-snapshot restore-check %s%s --details --files --no-limit\n" "${snapshot_id}" "${repo_filter_cmd_fragment}"
       printf "    Shows restore-readiness diagnostics against current tree (apply checks + collisions).\n"
@@ -1764,9 +1595,6 @@ git_snapshot_main() {
       ;;
     list)
       _git_snapshot_cmd_list "${root_repo}" "$@"
-      ;;
-    show)
-      _git_snapshot_cmd_show "${root_repo}" "$@"
       ;;
     inspect)
       _git_snapshot_cmd_inspect "${root_repo}" "$@"

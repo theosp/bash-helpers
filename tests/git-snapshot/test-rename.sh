@@ -17,8 +17,21 @@ create_output="$(cd "${root_repo}" && git_snapshot_test_cmd create)"
 old_snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${create_output}")"
 assert_non_empty "${old_snapshot_id}" "create should return snapshot id"
 
-created_before="$(cd "${root_repo}" && git_snapshot_test_cmd show "${old_snapshot_id}" --porcelain | grep '^created_at_epoch=' | cut -d= -f2-)"
-assert_non_empty "${created_before}" "show porcelain should include created_at_epoch"
+created_before="$(cd "${root_repo}" && git_snapshot_test_cmd list --porcelain | awk -F'\t' -v sid="${old_snapshot_id}" '
+  $1 == "snapshot" {
+    id = ""; epoch = ""
+    for (i = 2; i <= NF; i++) {
+      split($i, kv, "=")
+      if (kv[1] == "id") id = kv[2]
+      if (kv[1] == "created_at_epoch") epoch = kv[2]
+    }
+    if (id == sid) {
+      print epoch
+      exit
+    }
+  }
+')"
+assert_non_empty "${created_before}" "list porcelain should include created_at_epoch for old id"
 
 new_snapshot_id="renamed-snapshot"
 rename_output="$(cd "${root_repo}" && git_snapshot_test_cmd rename "${old_snapshot_id}" "${new_snapshot_id}")"
@@ -31,17 +44,30 @@ list_output="$(cd "${root_repo}" && git_snapshot_test_cmd list)"
 assert_contains "${new_snapshot_id}" "${list_output}" "list should include renamed id"
 assert_not_contains "${old_snapshot_id}" "${list_output}" "list should exclude old id after rename"
 
-show_after="$(cd "${root_repo}" && git_snapshot_test_cmd show "${new_snapshot_id}" --porcelain)"
-assert_contains "snapshot_id=${new_snapshot_id}" "${show_after}" "show should resolve new snapshot id"
-created_after="$(printf "%s\n" "${show_after}" | grep '^created_at_epoch=' | cut -d= -f2-)"
+inspect_after="$(cd "${root_repo}" && git_snapshot_test_cmd inspect "${new_snapshot_id}" --porcelain)"
+assert_contains $'inspect\tsnapshot_id='"${new_snapshot_id}" "${inspect_after}" "inspect should resolve new snapshot id"
+created_after="$(cd "${root_repo}" && git_snapshot_test_cmd list --porcelain | awk -F'\t' -v sid="${new_snapshot_id}" '
+  $1 == "snapshot" {
+    id = ""; epoch = ""
+    for (i = 2; i <= NF; i++) {
+      split($i, kv, "=")
+      if (kv[1] == "id") id = kv[2]
+      if (kv[1] == "created_at_epoch") epoch = kv[2]
+    }
+    if (id == sid) {
+      print epoch
+      exit
+    }
+  }
+')"
 assert_eq "${created_before}" "${created_after}" "rename should preserve creation epoch"
 
 set +e
-show_old_output="$(cd "${root_repo}" && git_snapshot_test_cmd show "${old_snapshot_id}" 2>&1)"
-show_old_code=$?
+inspect_old_output="$(cd "${root_repo}" && git_snapshot_test_cmd inspect "${old_snapshot_id}" 2>&1)"
+inspect_old_code=$?
 set -e
-assert_exit_code 1 "${show_old_code}" "old snapshot id should stop resolving after rename"
-assert_contains "Snapshot not found" "${show_old_output}" "old id show should fail clearly"
+assert_exit_code 1 "${inspect_old_code}" "old snapshot id should stop resolving after rename"
+assert_contains "Snapshot not found" "${inspect_old_output}" "old id inspect should fail clearly"
 
 porcelain_new_id="renamed-snapshot-porcelain"
 rename_porcelain_output="$(cd "${root_repo}" && git_snapshot_test_cmd rename "${new_snapshot_id}" "${porcelain_new_id}" --porcelain)"

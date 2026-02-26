@@ -42,7 +42,7 @@ git-snapshot create before-rebase
 git-snapshot rename before-rebase before-rebase-capability-gating
 
 # 2) Inspect what was captured
-git-snapshot show before-rebase-capability-gating
+git-snapshot inspect before-rebase-capability-gating
 
 # 3) Check restore readiness vs current tree
 git-snapshot restore-check before-rebase-capability-gating --files
@@ -126,7 +126,7 @@ Renames an existing snapshot id.
 - Fails if `<old_snapshot_id>` does not exist.
 - Fails if `<new_snapshot_id>` already exists.
 - Preserves all snapshot contents and creation timestamp.
-- Updates metadata so `show`/`list` report the new id.
+- Updates metadata so `inspect`/`list` report the new id.
 - `--porcelain` prints stable machine output:
   `renamed\told_id=<old>\tnew_id=<new>`
 
@@ -137,34 +137,12 @@ Lists snapshots for the resolved root-most repo.
 - Default output: human table (`ID`, `Created`, `Age`, `Repos`)
 - `--porcelain`: one stable tab-delimited line per snapshot with key/value fields
 
-### `git-snapshot show <snapshot_id> [--repo <rel_path>] [--verbose] [--porcelain]`
-
-Inspects snapshot metadata and per-repo details.
-
-Default (human) output includes:
-- Snapshot metadata (id, root path, creation time, repo count)
-- Per repo:
-  - snapshot commit + refs
-  - current commit + refs
-  - relation (`same`, `current-ahead`, `current-behind`, `diverged`, `unrelated`, `missing`)
-  - captured staged/unstaged/untracked file lists
-  - restore readiness signals:
-    - apply staged (`ok`, `fail`, `none`)
-    - apply unstaged (`ok`, `fail`, `none`)
-    - untracked collisions count
-
-Flags:
-- `--repo <rel_path>`: narrow output to one repo path from snapshot metadata
-- `--verbose`: include internal fields (integrity hash, bundle directory, full commit hashes)
-- `--porcelain`: stable machine output
-
 ### `git-snapshot inspect <snapshot_id> [options]`
 
 Shows captured bundle contents without mutating current repos.
-Default behavior is summary-first:
-- show repo/file totals
-- list changed repos only
-- hide per-file output unless detail flags are used
+Default behavior includes:
+- summary totals and changed-repo matrix
+- detailed `--stat` sections for changed repos
 
 Category flags:
 - `--staged`
@@ -173,10 +151,9 @@ Category flags:
 - `--all` (default behavior if no category is selected)
 
 Render mode flags (mutually exclusive):
-- `--files` (same as `--name-only`)
 - `--name-only`
 - `--stat`
-- `--patch`
+- `--diff`
 
 Other flags:
 - `--repo <rel_path>`
@@ -272,7 +249,6 @@ Examples:
 
 ```bash
 git-snapshot list --porcelain
-git-snapshot show before-rebase --porcelain
 git-snapshot inspect before-rebase --porcelain
 git-snapshot restore-check before-rebase --porcelain
 ```

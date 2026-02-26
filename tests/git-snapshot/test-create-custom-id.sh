@@ -19,11 +19,11 @@ created_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${create_out
 assert_eq "${custom_snapshot_id}" "${created_id}" "explicit snapshot id should be preserved"
 assert_file_exists "${snapshot_root}/${custom_snapshot_id}/meta.env" "snapshot should be created under explicit id"
 
-show_output="$(cd "${root_repo}" && git_snapshot_test_cmd show "${custom_snapshot_id}")"
-assert_contains "Snapshot: ${custom_snapshot_id}" "${show_output}" "show should resolve explicit snapshot id (human)"
+inspect_output="$(cd "${root_repo}" && git_snapshot_test_cmd inspect "${custom_snapshot_id}")"
+assert_contains "Snapshot inspect: ${custom_snapshot_id}" "${inspect_output}" "inspect should resolve explicit snapshot id (human)"
 
-show_porcelain_output="$(cd "${root_repo}" && git_snapshot_test_cmd show "${custom_snapshot_id}" --porcelain)"
-assert_contains "snapshot_id=${custom_snapshot_id}" "${show_porcelain_output}" "show porcelain should resolve explicit snapshot id"
+inspect_porcelain_output="$(cd "${root_repo}" && git_snapshot_test_cmd inspect "${custom_snapshot_id}" --porcelain)"
+assert_contains $'inspect\tsnapshot_id='"${custom_snapshot_id}" "${inspect_porcelain_output}" "inspect porcelain should resolve explicit snapshot id"
 
 set +e
 dup_output="$(cd "${root_repo}" && git_snapshot_test_cmd create "${custom_snapshot_id}" 2>&1)"

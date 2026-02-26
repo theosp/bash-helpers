@@ -23,13 +23,10 @@
   - Human output: table (id, created, age, repo count).
   - Porcelain output: tab-delimited `snapshot` rows with key/value fields.
 
-- `git-snapshot show <snapshot_id> [--repo <rel_path>] [--verbose] [--porcelain]`
-  - Human output: detailed metadata, relation, captured files, restore readiness.
-  - Porcelain output: `snapshot_id=...` header lines + `repo\t...` rows.
-
-- `git-snapshot inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--files|--name-only|--stat|--patch] [--limit <n>|--no-limit] [--porcelain]`
-  - Human default is summary-first (counts + changed repos only).
-  - Use detail flags for per-file/per-patch output.
+- `git-snapshot inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--name-only|--stat|--diff] [--limit <n>|--no-limit] [--porcelain]`
+  - Human default includes summary plus per-repo `--stat` detail.
+  - Use `--name-only` for file-path focused output.
+  - Use `--diff` for full tracked patch bodies.
   - Non-mutating.
 
 - `git-snapshot restore-check <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]`
