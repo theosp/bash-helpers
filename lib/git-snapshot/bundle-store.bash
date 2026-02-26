@@ -91,14 +91,55 @@ _git_snapshot_store_write_snapshot_meta() {
   local snapshot_id="$2"
   local root_repo="$3"
   local repo_count="$4"
+  local created_at_epoch="${5:-}"
+
+  if [[ -z "${created_at_epoch}" ]]; then
+    created_at_epoch="$(date +%s)"
+  fi
 
   {
     printf "FORMAT=git_snapshot_meta_v2\n"
     printf "SNAPSHOT_ID_B64=%s\n" "$(_git_snapshot_store_base64_encode "${snapshot_id}")"
-    printf "CREATED_AT_EPOCH=%s\n" "$(date +%s)"
+    printf "CREATED_AT_EPOCH=%s\n" "${created_at_epoch}"
     printf "ROOT_REPO_B64=%s\n" "$(_git_snapshot_store_base64_encode "${root_repo}")"
     printf "REPO_COUNT=%s\n" "${repo_count}"
   } > "${snapshot_path}/meta.env"
+}
+
+_git_snapshot_store_rename_snapshot() {
+  local root_repo="$1"
+  local old_snapshot_id="$2"
+  local new_snapshot_id="$3"
+  local old_snapshot_path new_snapshot_path
+
+  old_snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${old_snapshot_id}")"
+  new_snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${new_snapshot_id}")"
+
+  if [[ ! -d "${old_snapshot_path}" ]]; then
+    _git_snapshot_ui_err "Snapshot not found: ${old_snapshot_id}"
+    return 1
+  fi
+
+  if [[ -e "${new_snapshot_path}" ]]; then
+    _git_snapshot_ui_err "Snapshot already exists: ${new_snapshot_id}"
+    return 1
+  fi
+
+  mv "${old_snapshot_path}" "${new_snapshot_path}"
+
+  if ! _git_snapshot_store_load_snapshot_meta "${new_snapshot_path}"; then
+    _git_snapshot_ui_err "Failed to read metadata after rename; rolling back snapshot path."
+    mv "${new_snapshot_path}" "${old_snapshot_path}" 2>/dev/null || true
+    return 1
+  fi
+
+  if ! _git_snapshot_store_write_snapshot_meta "${new_snapshot_path}" "${new_snapshot_id}" "${ROOT_REPO}" "${REPO_COUNT}" "${CREATED_AT_EPOCH}"; then
+    _git_snapshot_ui_err "Failed to update snapshot metadata after rename; rolling back snapshot path."
+    mv "${new_snapshot_path}" "${old_snapshot_path}" 2>/dev/null || true
+    return 1
+  fi
+
+  return 0
 }
 
 _git_snapshot_store_load_snapshot_meta() {

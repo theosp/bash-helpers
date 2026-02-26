@@ -16,14 +16,17 @@ This tool is designed for fast local safety checkpoints before risky work
 # 1) Create a snapshot (prints snapshot id on last output line)
 git-snapshot create before-rebase
 
+# Optional: rename to a clearer id later
+git-snapshot rename before-rebase before-rebase-capability-gating
+
 # 2) Inspect what was captured
-git-snapshot show before-rebase
+git-snapshot show before-rebase-capability-gating
 
 # 3) Compare restore readiness vs current tree
-git-snapshot compare before-rebase --files
+git-snapshot compare before-rebase-capability-gating --files
 
 # 4) Restore when needed (interactive confirmation)
-git-snapshot restore before-rebase
+git-snapshot restore before-rebase-capability-gating
 ```
 
 ## Scope and Exactness
@@ -65,6 +68,17 @@ Creates a snapshot.
   `snapshot-YYYYMMDD-HHMMSS-<pid>-<random>`
 - If provided, `snapshot_id` must match `[A-Za-z0-9._-]+` and must not exist.
 - Last output line is always the snapshot id.
+
+### `git-snapshot rename <old_snapshot_id> <new_snapshot_id> [--porcelain]`
+
+Renames an existing snapshot id.
+
+- Fails if `<old_snapshot_id>` does not exist.
+- Fails if `<new_snapshot_id>` already exists.
+- Preserves all snapshot contents and creation timestamp.
+- Updates metadata so `show`/`list` report the new id.
+- `--porcelain` prints stable machine output:
+  `renamed\told_id=<old>\tnew_id=<new>`
 
 ### `git-snapshot list [--porcelain]`
 

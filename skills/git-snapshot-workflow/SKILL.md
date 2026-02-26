@@ -35,6 +35,8 @@ Follow this sequence and report each step.
 - Run: `git-snapshot create <snapshot_id>`
 - If id already exists, generate one deterministic retry id (for example append `-v2`), then retry once.
 - Capture and report the actual final `snapshot_id` from command output.
+- If user later wants to keep the snapshot but improve naming, use:
+  - `git-snapshot rename <old_snapshot_id> <new_snapshot_id>`
 
 2. Verify snapshot
 - Run: `git-snapshot show <snapshot_id>`

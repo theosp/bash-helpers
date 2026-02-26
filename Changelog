@@ -1,3 +1,17 @@
+v1.0.6 (2026-02-26)
+
+* Add `git-snapshot rename <old_snapshot_id> <new_snapshot_id>` to rename
+  snapshot ids without recapturing snapshot content.
+
+* Preserve snapshot creation metadata during rename and rewrite metadata to the
+  new id for consistent `list`/`show` output.
+
+* Add `rename --porcelain` machine output:
+  - `renamed\told_id=<old>\tnew_id=<new>`
+
+* Expand tests for rename success/failure scenarios, nested-PWD scope behavior,
+  and help/docs command coverage.
+
 v1.0.5 (2026-02-26)
 
 * Harden snapshot metadata loading by removing shell `source` parsing from

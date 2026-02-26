@@ -27,6 +27,7 @@ Restore target exactness
 Usage
 -----
   git-snapshot create [snapshot_id]
+  git-snapshot rename <old_snapshot_id> <new_snapshot_id> [--porcelain]
   git-snapshot list [--porcelain]
   git-snapshot show <snapshot_id> [--repo <rel_path>] [--verbose] [--porcelain]
   git-snapshot diff <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--files|--name-only|--stat|--patch] [--limit <n>|--no-limit] [--porcelain]
@@ -45,6 +46,15 @@ create [snapshot_id]
   Output contract:
   - final output line is always the snapshot id
   - informational lines can appear above it
+
+rename <old_snapshot_id> <new_snapshot_id>
+  Renames an existing snapshot id.
+  Behavior:
+  - fails if old id does not exist
+  - fails if new id already exists
+  - rewrites snapshot metadata to the new id (creation time preserved)
+  Optional flags:
+  - `--porcelain` : prints one stable key/value line
 
 list
   Lists snapshots for the resolved root-most repo.
@@ -149,6 +159,7 @@ Examples
 Create and inspect:
   git-snapshot create
   git-snapshot create before-rebase
+  git-snapshot rename before-rebase before-rebase-validated
   git-snapshot list
   git-snapshot show before-rebase
 
@@ -448,6 +459,71 @@ _git_snapshot_cmd_create() {
   fi
 
   _git_snapshot_create_internal "${root_repo}" "snapshot" true "${snapshot_id_override}"
+}
+
+_git_snapshot_cmd_rename() {
+  local root_repo="$1"
+  shift
+
+  local old_snapshot_id=""
+  local new_snapshot_id=""
+  local porcelain="false"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --porcelain)
+        porcelain="true"
+        ;;
+      -*)
+        _git_snapshot_ui_err "Unknown option for rename: $1"
+        return 1
+        ;;
+      *)
+        if [[ -z "${old_snapshot_id}" ]]; then
+          old_snapshot_id="$1"
+        elif [[ -z "${new_snapshot_id}" ]]; then
+          new_snapshot_id="$1"
+        else
+          _git_snapshot_ui_err "Unexpected argument for rename: $1"
+          return 1
+        fi
+        ;;
+    esac
+    shift
+  done
+
+  if [[ -z "${old_snapshot_id}" ]]; then
+    _git_snapshot_ui_err "Missing old_snapshot_id for rename"
+    return 1
+  fi
+  if [[ -z "${new_snapshot_id}" ]]; then
+    _git_snapshot_ui_err "Missing new_snapshot_id for rename"
+    return 1
+  fi
+
+  _git_snapshot_validate_snapshot_id "${old_snapshot_id}"
+  _git_snapshot_validate_snapshot_id "${new_snapshot_id}"
+
+  if [[ "${old_snapshot_id}" == "${new_snapshot_id}" ]]; then
+    _git_snapshot_ui_err "old_snapshot_id and new_snapshot_id must differ"
+    return 1
+  fi
+
+  _git_snapshot_store_assert_snapshot_exists "${root_repo}" "${old_snapshot_id}"
+  local new_snapshot_path
+  new_snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${new_snapshot_id}")"
+  if [[ -e "${new_snapshot_path}" ]]; then
+    _git_snapshot_ui_err "Snapshot already exists: ${new_snapshot_id}"
+    return 1
+  fi
+
+  _git_snapshot_store_rename_snapshot "${root_repo}" "${old_snapshot_id}" "${new_snapshot_id}"
+
+  if [[ "${porcelain}" == "true" ]]; then
+    printf "renamed\told_id=%s\tnew_id=%s\n" "${old_snapshot_id}" "${new_snapshot_id}"
+  else
+    _git_snapshot_ui_info "Renamed snapshot ${old_snapshot_id} -> ${new_snapshot_id}"
+  fi
 }
 
 _git_snapshot_cmd_list() {
@@ -1175,6 +1251,9 @@ git_snapshot_main() {
   case "${command}" in
     create)
       _git_snapshot_cmd_create "${root_repo}" "${1:-}"
+      ;;
+    rename)
+      _git_snapshot_cmd_rename "${root_repo}" "$@"
       ;;
     list)
       _git_snapshot_cmd_list "${root_repo}" "$@"

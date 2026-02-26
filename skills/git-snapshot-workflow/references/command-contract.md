@@ -8,6 +8,11 @@
   - Skill default is explicit id (`git-snapshot create <snapshot_id>`), derived from user intent/context.
   - Auto-id mode (`git-snapshot create`) is fallback-only unless user explicitly asks for it.
 
+- `git-snapshot rename <old_snapshot_id> <new_snapshot_id> [--porcelain]`
+  - Renames an existing snapshot id while preserving snapshot contents and creation time.
+  - Fails when old id does not exist or new id already exists.
+  - Porcelain output: `renamed\told_id=...\tnew_id=...`
+
 - `git-snapshot list [--porcelain]`
   - Human output: table (id, created, age, repo count).
   - Porcelain output: tab-delimited `snapshot` rows with key/value fields.
