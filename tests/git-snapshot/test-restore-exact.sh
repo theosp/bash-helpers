@@ -35,6 +35,10 @@ snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${create_ou
 # Drift away from snapshot state.
 git -C "${root_repo}" reset --hard >/dev/null
 git -C "${root_repo}" clean -fd >/dev/null
+git -C "${sub1}" reset --hard >/dev/null
+git -C "${sub1}" clean -fd >/dev/null
+git -C "${sub2}" reset --hard >/dev/null
+git -C "${sub2}" clean -fd >/dev/null
 printf "drift\n" > "${root_repo}/drift.txt"
 
 export GIT_SNAPSHOT_CONFIRM_RESTORE="RESTORE"

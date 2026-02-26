@@ -87,7 +87,10 @@ _git_snapshot_restore_with_optional_rollback() {
   local mismatch_lines=()
   local rel_path head_expected current_head repo_abs repo_bundle_dir status_hash_expected status_hash_actual repo_id human_repo_label
 
-  while IFS=$'\t' read -r repo_id rel_path head_expected status_hash_expected; do
+  # Apply bundles for all repos first. Parent repo status can depend on nested
+  # submodule working-tree state, so status-hash verification must run after
+  # the full apply pass completes.
+  while IFS=$'\t' read -r repo_id rel_path head_expected _status_hash_expected; do
     [[ -z "${repo_id}" ]] && continue
     repo_abs="${root_repo}/${rel_path}"
     human_repo_label="$(_git_snapshot_ui_human_repo_label "${root_repo}" "${rel_path}")"
@@ -103,13 +106,20 @@ _git_snapshot_restore_with_optional_rollback() {
       restore_failed=true
       break
     fi
-
-    status_hash_actual="$(_git_snapshot_status_hash_for_repo "${repo_abs}")"
-    if [[ "${status_hash_actual}" != "${status_hash_expected}" ]]; then
-      mismatch_lines+=("${human_repo_label}: expected=${status_hash_expected} actual=${status_hash_actual}")
-      restore_failed=true
-    fi
   done < <(_git_snapshot_store_read_repo_entries "${target_snapshot_path}")
+
+  if [[ "${restore_failed}" != "true" ]]; then
+    while IFS=$'\t' read -r repo_id rel_path _head_expected status_hash_expected; do
+      [[ -z "${repo_id}" ]] && continue
+      repo_abs="${root_repo}/${rel_path}"
+      human_repo_label="$(_git_snapshot_ui_human_repo_label "${root_repo}" "${rel_path}")"
+      status_hash_actual="$(_git_snapshot_status_hash_for_repo "${repo_abs}")"
+      if [[ "${status_hash_actual}" != "${status_hash_expected}" ]]; then
+        mismatch_lines+=("${human_repo_label}: expected=${status_hash_expected} actual=${status_hash_actual}")
+        restore_failed=true
+      fi
+    done < <(_git_snapshot_store_read_repo_entries "${target_snapshot_path}")
+  fi
 
   if [[ "${restore_failed}" == "true" ]]; then
     for line in "${mismatch_lines[@]:-}"; do

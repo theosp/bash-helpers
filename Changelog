@@ -1,3 +1,15 @@
+v1.0.17 (2026-02-26)
+
+* Fix restore verification ordering in nested submodule trees:
+  - restore now applies bundles for all repos first, then verifies status-hash
+    parity in a second pass.
+  - prevents false status-hash mismatches caused by parent repo verification
+    running before child submodule state is restored.
+
+* Harden restore regression coverage:
+  - expand `test-restore-exact.sh` drift setup to reset/clean nested submodules
+    before restore verification.
+
 v1.0.16 (2026-02-26)
 
 * Hard cut `inspect` file-limit flags:
