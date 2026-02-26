@@ -51,14 +51,14 @@ _git_snapshot_restore_single_repo() {
 
   if [[ -s "${repo_bundle_dir}/staged.patch" ]]; then
     _git_snapshot_restore_assert_patch_bundle_format "${repo_bundle_dir}/staged.patch" || return 1
-    git -C "${repo_abs}" apply --check --binary --index "${repo_bundle_dir}/staged.patch" || return 1
-    git -C "${repo_abs}" apply --binary --index "${repo_bundle_dir}/staged.patch" || return 1
+    git -C "${repo_abs}" apply --check --binary --whitespace=nowarn --index "${repo_bundle_dir}/staged.patch" || return 1
+    git -C "${repo_abs}" apply --binary --whitespace=nowarn --index "${repo_bundle_dir}/staged.patch" || return 1
   fi
 
   if [[ -s "${repo_bundle_dir}/unstaged.patch" ]]; then
     _git_snapshot_restore_assert_patch_bundle_format "${repo_bundle_dir}/unstaged.patch" || return 1
-    git -C "${repo_abs}" apply --check --binary "${repo_bundle_dir}/unstaged.patch" || return 1
-    git -C "${repo_abs}" apply --binary "${repo_bundle_dir}/unstaged.patch" || return 1
+    git -C "${repo_abs}" apply --check --binary --whitespace=nowarn "${repo_bundle_dir}/unstaged.patch" || return 1
+    git -C "${repo_abs}" apply --binary --whitespace=nowarn "${repo_bundle_dir}/unstaged.patch" || return 1
   fi
 
   if [[ -f "${repo_bundle_dir}/untracked.tar" ]]; then

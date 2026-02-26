@@ -1,3 +1,14 @@
+v1.0.11 (2026-02-26)
+
+* Suppress non-actionable Git whitespace warning noise during `restore` patch
+  application by applying snapshot patches with `--whitespace=nowarn`.
+
+* Preserve restore safety behavior: patch format validation, apply checks,
+  status-hash verification, and rollback logic remain unchanged.
+
+* Add regression coverage to ensure restore output does not surface trailing
+  whitespace warning spam when snapshot patches contain trailing spaces.
+
 v1.0.10 (2026-02-26)
 
 * Add `git-snapshot verify <snapshot_id>` to validate snapshot working-set
