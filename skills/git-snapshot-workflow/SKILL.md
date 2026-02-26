@@ -37,6 +37,10 @@ Follow this sequence and report each step.
 - Capture and report the actual final `snapshot_id` from command output.
 - If user later wants to keep the snapshot but improve naming, use:
   - `git-snapshot rename <old_snapshot_id> <new_snapshot_id>`
+- If user wants to pause current work and continue on a clean tree, use:
+  - `git-snapshot create <snapshot_id> --clear`
+  - for non-interactive/automation contexts use `--yes` or `GIT_SNAPSHOT_CONFIRM_CLEAR=YES`
+  - mention that clear is destructive for current unstaged/staged/untracked (non-ignored) state
 
 2. Verify snapshot
 - Run: `git-snapshot show <snapshot_id>`
@@ -56,6 +60,7 @@ Follow this sequence and report each step.
 
 - If `GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX` is set, command failure means resolved root repo is outside the allowed prefix.
 - Restore may create a safety snapshot automatically and can rollback on failure.
+- `create --clear` has confirmation by default (`[y/N]`) unless `--yes` or `GIT_SNAPSHOT_CONFIRM_CLEAR=YES` is provided.
 
 ## Snapshot id policy
 

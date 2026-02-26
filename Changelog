@@ -1,3 +1,20 @@
+v1.0.9 (2026-02-26)
+
+* Add `git-snapshot create --clear` workflow for interrupt-and-switch use:
+  - snapshot-first capture, then clear (`reset --hard` + `clean -fd`)
+  - interactive confirmation (`[y/N]`) by default
+  - non-interactive bypass via `--yes` or `GIT_SNAPSHOT_CONFIRM_CLEAR=YES`
+
+* Add best-effort clear behavior with per-repo failure reporting and non-zero
+  exit on clear failures, while still printing snapshot id as final output line
+  for immediate rollback availability.
+
+* Add warning-only reporting for submodule HEAD drift under `--clear` (no
+  forced submodule checkout/update alignment).
+
+* Document both primary usage scenarios (blast-radius checkpoint and
+  interrupt-and-switch) in README and workflow skill references.
+
 v1.0.8 (2026-02-26)
 
 * Change auto-generated snapshot id format to a readable timestamp-first form:

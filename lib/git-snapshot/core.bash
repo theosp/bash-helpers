@@ -26,7 +26,7 @@ Restore target exactness
 
 Usage
 -----
-  git-snapshot create [snapshot_id]
+  git-snapshot create [snapshot_id] [--clear] [--yes]
   git-snapshot rename <old_snapshot_id> <new_snapshot_id> [--porcelain]
   git-snapshot list [--porcelain]
   git-snapshot show <snapshot_id> [--repo <rel_path>] [--verbose] [--porcelain]
@@ -38,15 +38,23 @@ Usage
 
 Command details
 ---------------
-create [snapshot_id]
+create [snapshot_id] [--clear] [--yes]
   Creates snapshot data under:
     ~/git-snapshots/<root-most-repo-name>/<snapshot_id>
   If `snapshot_id` is omitted, id format is generated as:
     YYYY-MM-DD--HH-MM-SS
   If an id collision occurs for the same generated timestamp:
     YYYY-MM-DD--HH-MM-SS-02 (then -03, ...)
+  Flags:
+  - `--clear` : clear snapshotted repos after capture (`reset --hard`, `clean -fd`)
+  - `--yes`   : bypass clear confirmation prompt (valid only with `--clear`)
+  Clear behavior:
+  - confirmation prompt: `Proceed with clear? [y/N]:`
+  - no submodule checkout/update alignment is performed
+  - submodule HEAD drift is warning-only and does not fail clear
+  - clear is best-effort; failures are reported and command exits non-zero
   Output contract:
-  - final output line is always the snapshot id
+  - final output line is always the snapshot id (including clear-failure cases)
   - informational lines can appear above it
 
 rename <old_snapshot_id> <new_snapshot_id>
@@ -156,11 +164,16 @@ GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX=<path>
 GIT_SNAPSHOT_CONFIRM_RESTORE=RESTORE
   Non-interactive restore confirmation override.
 
+GIT_SNAPSHOT_CONFIRM_CLEAR=YES
+  Non-interactive clear confirmation override for `create --clear`.
+
 Examples
 --------
 Create and inspect:
   git-snapshot create
+  git-snapshot create --clear --yes
   git-snapshot create before-rebase
+  git-snapshot create before-task-switch --clear
   git-snapshot rename before-rebase before-rebase-validated
   git-snapshot list
   git-snapshot show before-rebase
@@ -457,9 +470,133 @@ _git_snapshot_print_file_group_human_limited() {
   _git_snapshot_print_lines_limited "${content}" "${limit}" "    - "
 }
 
+_git_snapshot_clear_single_repo() {
+  local repo_abs="$1"
+  local err_output=""
+
+  if ! git -C "${repo_abs}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+    printf "not a git working tree"
+    return 1
+  fi
+
+  if ! err_output="$(git -C "${repo_abs}" reset --hard 2>&1 >/dev/null)"; then
+    if [[ -z "${err_output}" ]]; then
+      err_output="unknown error"
+    fi
+    printf "git reset --hard failed (%s)" "${err_output}"
+    return 1
+  fi
+
+  if ! err_output="$(git -C "${repo_abs}" clean -fd 2>&1 >/dev/null)"; then
+    if [[ -z "${err_output}" ]]; then
+      err_output="unknown error"
+    fi
+    printf "git clean -fd failed (%s)" "${err_output}"
+    return 1
+  fi
+
+  return 0
+}
+
+_git_snapshot_detect_submodule_drift_paths() {
+  local root_repo="$1"
+
+  git -C "${root_repo}" submodule status --recursive 2>/dev/null | awk '/^\+/ {print $2}'
+}
+
+_git_snapshot_clear_from_snapshot() {
+  local root_repo="$1"
+  local snapshot_id="$2"
+  local snapshot_path
+  local total_repos=0
+  local cleared_repos=0
+  local failed_repos=0
+  local repo_id rel_path _head _status_hash repo_abs failure_reason
+  local -a failures=()
+  local drift_paths=""
+  local drift_count=0
+
+  snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
+  _git_snapshot_store_assert_snapshot_exists "${root_repo}" "${snapshot_id}" || return 1
+
+  while IFS=$'\t' read -r repo_id rel_path _head _status_hash; do
+    [[ -z "${repo_id}" ]] && continue
+    total_repos=$((total_repos + 1))
+    repo_abs="${root_repo}/${rel_path}"
+
+    if ! failure_reason="$(_git_snapshot_clear_single_repo "${repo_abs}")"; then
+      failed_repos=$((failed_repos + 1))
+      failures+=("${rel_path}: ${failure_reason}")
+      continue
+    fi
+
+    cleared_repos=$((cleared_repos + 1))
+  done < <(_git_snapshot_store_read_repo_entries "${snapshot_path}")
+
+  drift_paths="$(_git_snapshot_detect_submodule_drift_paths "${root_repo}")"
+  if [[ -n "${drift_paths}" ]]; then
+    while IFS= read -r _drift_path; do
+      [[ -z "${_drift_path}" ]] && continue
+      drift_count=$((drift_count + 1))
+    done <<< "${drift_paths}"
+    if [[ "${drift_count}" -gt 0 ]]; then
+      _git_snapshot_ui_warn "Submodule HEAD drift remains by design (no checkout/update in --clear):"
+      while IFS= read -r _drift_path; do
+        [[ -z "${_drift_path}" ]] && continue
+        _git_snapshot_ui_warn "  - ${_drift_path}"
+      done <<< "${drift_paths}"
+    fi
+  fi
+
+  if [[ "${failed_repos}" -gt 0 ]]; then
+    _git_snapshot_ui_err "Clear completed with failures (${failed_repos}/${total_repos} repos)."
+    for failure_reason in "${failures[@]}"; do
+      _git_snapshot_ui_err "  - ${failure_reason}"
+    done
+    return 1
+  fi
+
+  _git_snapshot_ui_info "Clear completed (${cleared_repos}/${total_repos} repos)."
+  return 0
+}
+
 _git_snapshot_cmd_create() {
   local root_repo="$1"
-  local snapshot_id_override="${2:-}"
+  shift
+  local snapshot_id_override=""
+  local do_clear="false"
+  local skip_clear_confirmation="false"
+  local snapshot_id snapshot_path
+  local clear_status=0
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --clear)
+        do_clear="true"
+        ;;
+      --yes)
+        skip_clear_confirmation="true"
+        ;;
+      -*)
+        _git_snapshot_ui_err "Unknown option for create: $1"
+        return 1
+        ;;
+      *)
+        if [[ -z "${snapshot_id_override}" ]]; then
+          snapshot_id_override="$1"
+        else
+          _git_snapshot_ui_err "Unexpected argument for create: $1"
+          return 1
+        fi
+        ;;
+    esac
+    shift
+  done
+
+  if [[ "${skip_clear_confirmation}" == "true" && "${do_clear}" != "true" ]]; then
+    _git_snapshot_ui_err "--yes is only valid with --clear"
+    return 1
+  fi
 
   if [[ -n "${snapshot_id_override}" ]]; then
     _git_snapshot_validate_snapshot_id "${snapshot_id_override}"
@@ -472,7 +609,23 @@ _git_snapshot_cmd_create() {
     fi
   fi
 
-  _git_snapshot_create_internal "${root_repo}" "snapshot" true "${snapshot_id_override}"
+  if [[ "${do_clear}" == "true" && "${skip_clear_confirmation}" != "true" ]]; then
+    _git_snapshot_ui_confirm_yes_no "Proceed with clear? [y/N]: " "GIT_SNAPSHOT_CONFIRM_CLEAR" "YES" || return 1
+  fi
+
+  snapshot_id="$(_git_snapshot_create_internal "${root_repo}" "snapshot" false "${snapshot_id_override}")" || return 1
+  snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
+  _git_snapshot_store_load_snapshot_meta "${snapshot_path}" || return 1
+  _git_snapshot_ui_info "Created snapshot ${snapshot_id} (repos=${REPO_COUNT})"
+
+  if [[ "${do_clear}" == "true" ]]; then
+    if ! _git_snapshot_clear_from_snapshot "${root_repo}" "${snapshot_id}"; then
+      clear_status=1
+    fi
+  fi
+
+  printf "%s\n" "${snapshot_id}"
+  return "${clear_status}"
 }
 
 _git_snapshot_cmd_rename() {
@@ -1276,7 +1429,7 @@ git_snapshot_main() {
 
   case "${command}" in
     create)
-      _git_snapshot_cmd_create "${root_repo}" "${1:-}"
+      _git_snapshot_cmd_create "${root_repo}" "$@"
       ;;
     rename)
       _git_snapshot_cmd_rename "${root_repo}" "$@"

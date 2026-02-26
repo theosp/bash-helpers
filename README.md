@@ -10,6 +10,28 @@ superproject and all initialized recursive submodules.
 This tool is designed for fast local safety checkpoints before risky work
 (rebase, migration, large refactors, bulk file operations).
 
+## Primary Workflows
+
+### Scenario A: Blast-radius safety checkpoint
+
+Use when you are about to run a broad/high-risk change and want a fast rollback
+point without creating temporary commits.
+
+Typical flow:
+1. `git-snapshot create <intent-id>`
+2. perform risky work
+3. if needed, recover with `git-snapshot restore <intent-id>`
+
+### Scenario B: Interrupt and switch tasks
+
+Use when you must pause current work and move immediately to something else on
+a clean tree.
+
+Typical flow:
+1. `git-snapshot create <intent-id> --clear` (or `--yes` / env bypass)
+2. handle urgent task on clean trees
+3. later resume with `git-snapshot restore <intent-id>`
+
 ### Quick Start
 
 ```bash
@@ -60,7 +82,7 @@ Ignored files are intentionally out of scope.
 
 ## Command Reference
 
-### `git-snapshot create [snapshot_id]`
+### `git-snapshot create [snapshot_id] [--clear] [--yes]`
 
 Creates a snapshot.
 
@@ -69,6 +91,17 @@ Creates a snapshot.
 - If a generated timestamp id already exists, suffixes are added:
   `YYYY-MM-DD--HH-MM-SS-02`, `...-03`, etc.
 - If provided, `snapshot_id` must match `[A-Za-z0-9._-]+` and must not exist.
+- `--clear` clears each snapshotted repo after capture:
+  - `git reset --hard`
+  - `git clean -fd`
+- `--yes` bypasses interactive clear confirmation (`--yes` is valid only with `--clear`).
+- `--clear` prompt: `Proceed with clear? [y/N]:`
+- `--clear` is best-effort:
+  - clear attempts continue across repos
+  - failures are reported per repo
+  - command exits non-zero if any clear failed
+- Snapshot id is still printed as final output line even on clear failure (for recovery).
+- `--clear` does **not** run submodule checkout/update alignment; submodule HEAD drift is warning-only.
 - Last output line is always the snapshot id.
 
 ### `git-snapshot rename <old_snapshot_id> <new_snapshot_id> [--porcelain]`
@@ -246,6 +279,16 @@ export GIT_SNAPSHOT_CONFIRM_RESTORE=RESTORE
 ```
 
 Useful for controlled non-interactive automation.
+
+### Clear confirmation override
+
+Set:
+
+```bash
+export GIT_SNAPSHOT_CONFIRM_CLEAR=YES
+```
+
+This bypasses interactive confirmation for `git-snapshot create --clear`.
 
 ## Troubleshooting
 

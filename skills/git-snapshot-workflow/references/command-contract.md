@@ -2,13 +2,17 @@
 
 ## Commands
 
-- `git-snapshot create [snapshot_id]`
+- `git-snapshot create [snapshot_id] [--clear] [--yes]`
   - Creates a snapshot for root-most superproject + initialized recursive submodules.
   - Snapshot id is printed as the last output line.
   - Skill default is explicit id (`git-snapshot create <snapshot_id>`), derived from user intent/context.
   - Auto-id mode (`git-snapshot create`) is fallback-only unless user explicitly asks for it.
   - Auto-id format (when no id is provided): `YYYY-MM-DD--HH-MM-SS` with
     collision suffixes (`-02`, `-03`, ...).
+  - `--clear` runs post-capture clean (`reset --hard` + `clean -fd`) across snapshotted repos.
+  - `--yes` bypasses clear confirmation (only valid with `--clear`).
+  - `--clear` is best-effort: reports failures per repo and exits non-zero if any clear failed.
+  - Submodule checkout/update alignment is not performed during clear.
 
 - `git-snapshot rename <old_snapshot_id> <new_snapshot_id> [--porcelain]`
   - Renames an existing snapshot id while preserving snapshot contents and creation time.
@@ -63,3 +67,7 @@ Root scope is the root-most superproject resolved from current working directory
 ## Safety guard
 
 If `GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX` is set, execution is refused when resolved root repo is outside that prefix.
+
+`create --clear` confirmation can be bypassed in non-interactive contexts with:
+- `--yes`
+- `GIT_SNAPSHOT_CONFIRM_CLEAR=YES`
