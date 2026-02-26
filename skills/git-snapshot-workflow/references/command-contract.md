@@ -7,6 +7,8 @@
   - Snapshot id is printed as the last output line.
   - Skill default is explicit id (`git-snapshot create <snapshot_id>`), derived from user intent/context.
   - Auto-id mode (`git-snapshot create`) is fallback-only unless user explicitly asks for it.
+  - Auto-id format (when no id is provided): `YYYY-MM-DD--HH-MM-SS` with
+    collision suffixes (`-02`, `-03`, ...).
 
 - `git-snapshot rename <old_snapshot_id> <new_snapshot_id> [--porcelain]`
   - Renames an existing snapshot id while preserving snapshot contents and creation time.

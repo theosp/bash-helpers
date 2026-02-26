@@ -65,7 +65,9 @@ Ignored files are intentionally out of scope.
 Creates a snapshot.
 
 - If `snapshot_id` is omitted, an id is generated:
-  `snapshot-YYYYMMDD-HHMMSS-<pid>-<random>`
+  `YYYY-MM-DD--HH-MM-SS`
+- If a generated timestamp id already exists, suffixes are added:
+  `YYYY-MM-DD--HH-MM-SS-02`, `...-03`, etc.
 - If provided, `snapshot_id` must match `[A-Za-z0-9._-]+` and must not exist.
 - Last output line is always the snapshot id.
 

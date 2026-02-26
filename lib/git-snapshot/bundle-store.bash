@@ -48,11 +48,28 @@ _git_snapshot_store_ensure_dirs() {
 }
 
 _git_snapshot_store_new_snapshot_id() {
-  local label="${1:-snapshot}"
+  local root_repo="$1"
+  local label="${2:-snapshot}"
   local ts
+  local stem
+  local candidate
+  local sequence=1
 
-  ts="$(date +%Y%m%d-%H%M%S)"
-  printf "%s-%s-%s-%s\n" "${label}" "${ts}" "$$" "${RANDOM}"
+  ts="$(date +%Y-%m-%d--%H-%M-%S)"
+
+  if [[ -n "${label}" && "${label}" != "snapshot" ]]; then
+    stem="${label}-${ts}"
+  else
+    stem="${ts}"
+  fi
+
+  candidate="${stem}"
+  while [[ -e "$(_git_snapshot_store_snapshot_path "${root_repo}" "${candidate}")" ]]; do
+    sequence=$((sequence + 1))
+    candidate="$(printf "%s-%02d" "${stem}" "${sequence}")"
+  done
+
+  printf "%s\n" "${candidate}"
 }
 
 _git_snapshot_store_snapshot_path() {

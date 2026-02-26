@@ -1,3 +1,12 @@
+v1.0.8 (2026-02-26)
+
+* Change auto-generated snapshot id format to a readable timestamp-first form:
+  - `YYYY-MM-DD--HH-MM-SS`
+  - collision suffixes: `-02`, `-03`, ...
+
+* Keep `create` custom-id behavior unchanged and update docs/help references to
+  the new default id scheme.
+
 v1.0.7 (2026-02-26)
 
 * Improve human readability for `git-snapshot` repo labels:

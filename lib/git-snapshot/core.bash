@@ -42,7 +42,9 @@ create [snapshot_id]
   Creates snapshot data under:
     ~/git-snapshots/<root-most-repo-name>/<snapshot_id>
   If `snapshot_id` is omitted, id format is generated as:
-    snapshot-YYYYMMDD-HHMMSS-<pid>-<random>
+    YYYY-MM-DD--HH-MM-SS
+  If an id collision occurs for the same generated timestamp:
+    YYYY-MM-DD--HH-MM-SS-02 (then -03, ...)
   Output contract:
   - final output line is always the snapshot id
   - informational lines can appear above it
@@ -253,7 +255,7 @@ _git_snapshot_create_internal() {
   if [[ -n "${explicit_snapshot_id}" ]]; then
     snapshot_id="${explicit_snapshot_id}"
   else
-    snapshot_id="$(_git_snapshot_store_new_snapshot_id "${label}")"
+    snapshot_id="$(_git_snapshot_store_new_snapshot_id "${root_repo}" "${label}")"
   fi
   snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
 

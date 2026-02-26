@@ -35,6 +35,9 @@ assert_contains "modules/sub1/modules/sub2" "${dirty_output}" "dirty list should
   create_output="$(git_snapshot_test_cmd create)"
   snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${create_output}")"
   assert_non_empty "${snapshot_id}" "snapshot id should be returned"
+  if [[ ! "${snapshot_id}" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}--[0-9]{2}-[0-9]{2}-[0-9]{2}(-[0-9]{2})?$ ]]; then
+    fail "Auto snapshot id should be readable timestamp format. got='${snapshot_id}'"
+  fi
 )
 
 snapshot_root="$(git_snapshot_test_snapshot_root_for_repo "${root_repo}")"
