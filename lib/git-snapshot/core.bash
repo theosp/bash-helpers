@@ -407,6 +407,18 @@ _git_snapshot_parse_positive_int() {
   printf "%s" "${raw}"
 }
 
+_git_snapshot_human_repo_label() {
+  local root_repo="$1"
+  local rel_path="$2"
+
+  if [[ "${rel_path}" == "." ]]; then
+    basename "${root_repo}"
+    return 0
+  fi
+
+  printf "%s" "${rel_path}"
+}
+
 _git_snapshot_print_lines_limited() {
   local content="$1"
   local limit="$2"
@@ -670,7 +682,9 @@ _git_snapshot_cmd_show() {
       continue
     fi
 
-    printf "\nRepo: %s\n" "${rel_path}"
+    local human_repo_label
+    human_repo_label="$(_git_snapshot_human_repo_label "${root_repo}" "${rel_path}")"
+    printf "\nRepo: %s\n" "${human_repo_label}"
     printf "  Snapshot commit: %s (branches: %s; tags: %s)\n" "${snapshot_head_short}" "${GSN_SNAPSHOT_BRANCHES_CSV}" "${GSN_SNAPSHOT_TAGS_CSV}"
     printf "  Current commit:  %s (branch: %s; tags: %s)\n" "${current_head_short}" "${GSN_CURRENT_BRANCH}" "${GSN_CURRENT_TAGS_CSV}"
 
@@ -965,7 +979,10 @@ _git_snapshot_cmd_diff() {
     if [[ "${summary_has_changes}" == "true" ]]; then
       state_label="changed"
     fi
-    printf "  - %-58s staged=%-4s unstaged=%-4s untracked=%-4s [%s]\n" "${summary_rel_path}" "${summary_staged}" "${summary_unstaged}" "${summary_untracked}" "${state_label}"
+    local human_summary_label
+    human_summary_label="$(_git_snapshot_human_repo_label "${root_repo}" "${summary_rel_path}")"
+    printf "  - %s [%s]\n" "${human_summary_label}" "${state_label}"
+    printf "    staged=%s unstaged=%s untracked=%s\n" "${summary_staged}" "${summary_unstaged}" "${summary_untracked}"
   done <<< "${summary_rows}"
 
   if [[ "${show_details}" != "true" ]]; then
@@ -985,7 +1002,9 @@ _git_snapshot_cmd_diff() {
     local staged_patch="${GSN_REPO_BUNDLE_DIR}/staged.patch"
     local unstaged_patch="${GSN_REPO_BUNDLE_DIR}/unstaged.patch"
 
-    printf "\nRepo: %s\n" "${summary_rel_path}"
+    local human_detail_label
+    human_detail_label="$(_git_snapshot_human_repo_label "${root_repo}" "${summary_rel_path}")"
+    printf "\nRepo: %s\n" "${human_detail_label}"
     if [[ "${include_staged}" == "true" ]]; then
       _git_snapshot_diff_render_human_category "Staged" "${GSN_STAGED_FILES}" "${GSN_STAGED_COUNT}" "${render_mode}" "${staged_patch}" "${limit}"
     fi
@@ -1161,7 +1180,10 @@ _git_snapshot_cmd_compare() {
         relation_label="${summary_relation}(+${summary_ahead}/-${summary_behind})"
       fi
 
-      printf "  - %-58s status=%-6s relation=%-24s staged=%-4s unstaged=%-4s collisions=%-4s\n" "${summary_rel_path}" "${status_label}" "${relation_label}" "${summary_apply_staged}" "${summary_apply_unstaged}" "${summary_collision_count}"
+      local human_summary_label
+      human_summary_label="$(_git_snapshot_human_repo_label "${root_repo}" "${summary_rel_path}")"
+      printf "  - %s status=%s\n" "${human_summary_label}" "${status_label}"
+      printf "    relation=%s staged=%s unstaged=%s collisions=%s\n" "${relation_label}" "${summary_apply_staged}" "${summary_apply_unstaged}" "${summary_collision_count}"
     done <<< "${summary_rows}"
   fi
 
@@ -1172,7 +1194,9 @@ _git_snapshot_cmd_compare() {
       [[ -z "${summary_repo_id}" ]] && continue
       _git_snapshot_calculate_repo_state "${root_repo}" "${snapshot_path}" "${summary_repo_id}" "${summary_rel_path}" "${summary_snapshot_head}" "${summary_status_hash}"
 
-      printf "\nRepo: %s\n" "${summary_rel_path}"
+      local human_detail_label
+      human_detail_label="$(_git_snapshot_human_repo_label "${root_repo}" "${summary_rel_path}")"
+      printf "\nRepo: %s\n" "${human_detail_label}"
       printf "  Relation: %s" "${GSN_RELATION}"
       if [[ "${GSN_RELATION}" != "same" && "${GSN_RELATION}" != "missing" ]]; then
         printf " (ahead %s, behind %s)" "${GSN_AHEAD_COUNT}" "${GSN_BEHIND_COUNT}"

@@ -1,3 +1,11 @@
+v1.0.7 (2026-02-26)
+
+* Improve human readability for `git-snapshot` repo labels:
+  - show root repo by folder name instead of `.` in `show`, `diff`, and `compare`.
+
+* Reformat `diff` and `compare` human repo summary rows to two-line entries so
+  counters/signals are easier to scan in narrow terminals.
+
 v1.0.6 (2026-02-26)
 
 * Add `git-snapshot rename <old_snapshot_id> <new_snapshot_id>` to rename

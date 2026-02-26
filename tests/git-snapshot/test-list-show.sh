@@ -24,7 +24,7 @@ assert_contains "Repos" "${list_output}" "list should include repo count column"
 show_output="$(cd "${root_repo}" && git_snapshot_test_cmd show "${snapshot_id}")"
 assert_contains "Snapshot: ${snapshot_id}" "${show_output}" "show should include human snapshot header"
 assert_contains "Repos: " "${show_output}" "show should include repo count"
-assert_contains "Repo: ." "${show_output}" "show should include per-repo sections"
+assert_contains "Repo: super" "${show_output}" "show should display root repo by folder name"
 assert_contains "Staged (" "${show_output}" "show should include staged file group"
 assert_contains "Restore readiness:" "${show_output}" "show should include restore readiness summary"
 

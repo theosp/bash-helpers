@@ -28,6 +28,7 @@ assert_non_empty "${snapshot_id}" "snapshot id should be returned"
 diff_output="$(cd "${root_repo}" && git_snapshot_test_cmd diff "${snapshot_id}")"
 assert_contains "Snapshot diff: ${snapshot_id}" "${diff_output}" "diff should include snapshot heading"
 assert_contains "Repo summary (changed captures only):" "${diff_output}" "diff default should be summary-first"
+assert_contains "  - super [changed]" "${diff_output}" "diff summary should display root repo by folder name"
 assert_contains "staged=1" "${diff_output}" "diff summary should include staged count"
 assert_contains "unstaged=1" "${diff_output}" "diff summary should include unstaged count"
 assert_contains "untracked=5" "${diff_output}" "diff summary should include untracked count"
@@ -35,7 +36,7 @@ assert_not_contains "root-untracked-1.txt" "${diff_output}" "diff summary should
 
 diff_details_output="$(cd "${root_repo}" && git_snapshot_test_cmd diff "${snapshot_id}" --files)"
 assert_contains "Details (name-only mode):" "${diff_details_output}" "diff --files should print detail sections"
-assert_contains "Repo: ." "${diff_details_output}" "diff --files should include root repo section"
+assert_contains "Repo: super" "${diff_details_output}" "diff --files should include root repo section"
 assert_contains "root-untracked-1.txt" "${diff_details_output}" "diff --files should include file names"
 
 diff_limited_output="$(cd "${root_repo}" && git_snapshot_test_cmd diff "${snapshot_id}" --files --limit 2)"
@@ -74,7 +75,8 @@ compare_details_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${
 assert_contains "Repo summary (full matrix):" "${compare_details_output}" "compare --all-repos should include full matrix"
 assert_contains "status=clean" "${compare_details_output}" "compare --all-repos should include clean status rows"
 assert_contains "Details:" "${compare_details_output}" "compare --details should include detail sections"
-assert_contains "Repo: ." "${compare_details_output}" "compare details should include repo section"
+assert_contains "  - super status=clean" "${compare_details_output}" "compare summary should display root repo by folder name"
+assert_contains "Repo: super" "${compare_details_output}" "compare details should include root repo section"
 assert_not_contains $'\t' "${compare_details_output}" "compare details should not include tab-corrupted relation counters"
 
 # Validate compare detail limiting for captured/collision files.
