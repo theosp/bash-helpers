@@ -1,3 +1,19 @@
+v1.0.5 (2026-02-26)
+
+* Harden snapshot metadata loading by removing shell `source` parsing from
+  `meta.env`; add explicit key parsing and safe legacy-value decode support.
+
+* Add untracked tar safety validation during restore; reject unsafe archive
+  entries (absolute paths / traversal) before extraction.
+
+* Fix commit-relation parsing portability in `compare` (`git rev-list --left-right --count`)
+  to avoid tab-delimiter corruption in ahead/behind counts.
+
+* Expand regression coverage for:
+  - safe metadata loading against command-substitution payloads
+  - restore rejection + rollback on unsafe untracked tar entries
+  - diff/compare detail limiting and compare output integrity
+
 v1.0.4 (2026-02-26)
 
 * Streamline `git-snapshot diff` and `git-snapshot compare` default human output

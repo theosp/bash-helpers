@@ -15,6 +15,33 @@ _git_snapshot_restore_assert_patch_bundle_format() {
   return 0
 }
 
+_git_snapshot_restore_validate_untracked_tar() {
+  local tar_file="$1"
+  local entry
+
+  if [[ ! -f "${tar_file}" ]]; then
+    return 0
+  fi
+
+  if ! tar -tf "${tar_file}" >/dev/null 2>&1; then
+    _git_snapshot_ui_err "Invalid untracked tar bundle format: ${tar_file}"
+    return 1
+  fi
+
+  while IFS= read -r entry; do
+    [[ -z "${entry}" ]] && continue
+
+    case "${entry}" in
+      /*|..|../*|*/../*|*/..)
+        _git_snapshot_ui_err "Unsafe untracked tar entry detected: ${entry}"
+        return 1
+        ;;
+    esac
+  done < <(tar -tf "${tar_file}")
+
+  return 0
+}
+
 _git_snapshot_restore_single_repo() {
   local repo_abs="$1"
   local repo_bundle_dir="$2"
@@ -35,6 +62,7 @@ _git_snapshot_restore_single_repo() {
   fi
 
   if [[ -f "${repo_bundle_dir}/untracked.tar" ]]; then
+    _git_snapshot_restore_validate_untracked_tar "${repo_bundle_dir}/untracked.tar" || return 1
     tar -xf "${repo_bundle_dir}/untracked.tar" -C "${repo_abs}" || return 1
   fi
 }

@@ -163,8 +163,11 @@ _git_snapshot_inspect_relation() {
 
   counts="$(git -C "${repo_abs}" rev-list --left-right --count "${snapshot_head}...${current_head}" 2>/dev/null || true)"
   if [[ -n "${counts}" ]]; then
-    behind="${counts%% *}"
-    ahead="${counts##* }"
+    # Git may delimit counts with spaces or tabs depending on environment/version.
+    counts="${counts//$'\t'/ }"
+    read -r behind ahead <<< "${counts}"
+    behind="${behind:-0}"
+    ahead="${ahead:-0}"
   fi
 
   if git -C "${repo_abs}" merge-base --is-ancestor "${snapshot_head}" "${current_head}" >/dev/null 2>&1; then
