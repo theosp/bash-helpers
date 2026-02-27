@@ -992,6 +992,7 @@ _git_snapshot_cmd_list() {
   if [[ "${visible_count}" -eq 0 ]]; then
     if [[ "${include_auto}" == "true" ]]; then
       printf "No snapshots found (%s)\n" "${root_repo}"
+      printf "\n"
       printf "Note: snapshot registry is keyed by root repo folder name. Repositories sharing the same folder name share this registry.\n"
       return 0
     fi
@@ -999,6 +1000,7 @@ _git_snapshot_cmd_list() {
     if [[ "${hidden_auto_count}" -gt 0 ]]; then
       printf "Hint: %s auto-generated snapshot(s) hidden. Run: git-snapshot list --include-auto\n" "${hidden_auto_count}"
     fi
+    printf "\n"
     printf "Note: snapshot registry is keyed by root repo folder name. Repositories sharing the same folder name share this registry.\n"
     return 0
   fi
@@ -1006,15 +1008,15 @@ _git_snapshot_cmd_list() {
   printf "Snapshots (%s)\n" "${root_repo}"
   if [[ "${include_auto}" == "true" ]]; then
     if [[ "${show_root_column}" == "true" ]]; then
-      printf "%-28s %-19s %-6s %-5s %-48s %-4s\n" "ID" "Created" "Age" "Repos" "Root" "Auto"
+      printf "%-28s %-19s %-6s %-7s %-48s %-4s\n" "ID" "Created" "Age" "Repos" "Root" "Auto"
     else
-      printf "%-28s %-19s %-6s %-5s %-4s\n" "ID" "Created" "Age" "Repos" "Auto"
+      printf "%-28s %-19s %-6s %-7s %-4s\n" "ID" "Created" "Age" "Repos" "Auto"
     fi
   else
     if [[ "${show_root_column}" == "true" ]]; then
-      printf "%-28s %-19s %-6s %-5s %-48s\n" "ID" "Created" "Age" "Repos" "Root"
+      printf "%-28s %-19s %-6s %-7s %-48s\n" "ID" "Created" "Age" "Repos" "Root"
     else
-      printf "%-28s %-19s %-6s %-5s\n" "ID" "Created" "Age" "Repos"
+      printf "%-28s %-19s %-6s %-7s\n" "ID" "Created" "Age" "Repos"
     fi
   fi
   while IFS=$'\t' read -r epoch snapshot_id repo_count snapshot_origin snapshot_root_repo; do
@@ -1028,15 +1030,15 @@ _git_snapshot_cmd_list() {
         auto_marker="*"
       fi
       if [[ "${show_root_column}" == "true" ]]; then
-        printf "%-28s %-19s %-6s %-5s %-48s %-4s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}" "${snapshot_root_repo}" "${auto_marker}"
+        printf "%-28s %-19s %-6s %-7s %-48s %-4s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}" "${snapshot_root_repo}" "${auto_marker}"
       else
-        printf "%-28s %-19s %-6s %-5s %-4s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}" "${auto_marker}"
+        printf "%-28s %-19s %-6s %-7s %-4s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}" "${auto_marker}"
       fi
     else
       if [[ "${show_root_column}" == "true" ]]; then
-        printf "%-28s %-19s %-6s %-5s %-48s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}" "${snapshot_root_repo}"
+        printf "%-28s %-19s %-6s %-7s %-48s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}" "${snapshot_root_repo}"
       else
-        printf "%-28s %-19s %-6s %-5s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}"
+        printf "%-28s %-19s %-6s %-7s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}"
       fi
     fi
   done < <(printf "%s" "${rows}" | sort -t$'\t' -k1,1nr)
@@ -1046,6 +1048,7 @@ _git_snapshot_cmd_list() {
   elif [[ "${hidden_auto_count}" -gt 0 ]]; then
     printf "Hint: %s auto-generated snapshot(s) hidden. Run: git-snapshot list --include-auto\n" "${hidden_auto_count}"
   fi
+  printf "\n"
   printf "Note: snapshot registry is keyed by root repo folder name. Repositories sharing the same folder name share this registry.\n"
 }
 

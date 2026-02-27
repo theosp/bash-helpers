@@ -1,3 +1,9 @@
+v1.0.23 (2026-02-27)
+
+* Improve `git-snapshot list` readability:
+  - widen the `Repos` column for cleaner alignment.
+  - add a blank line before the shared-registry note in list output.
+
 v1.0.22 (2026-02-27)
 
 * Refine `git-snapshot list` root-column visibility rule:
