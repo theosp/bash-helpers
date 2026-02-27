@@ -96,7 +96,7 @@ list
   - Created (local timezone)
   - Age
   - Repos
-  - Root (snapshot source root path from metadata; shown only when multiple roots are present)
+  - Root (snapshot source root path; shown when visible snapshots are not all from current root)
   - Auto (`*` means auto-generated; shown only when `--include-auto` is used)
   Note:
   - snapshot registry is keyed by root repo folder name
@@ -964,6 +964,8 @@ _git_snapshot_cmd_list() {
   local rows=""
   local show_root_column="false"
   local distinct_root_count=0
+  local unique_roots=""
+  local only_root=""
   while IFS= read -r snapshot_id; do
     [[ -z "${snapshot_id}" ]] && continue
     snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
@@ -976,9 +978,15 @@ _git_snapshot_cmd_list() {
     rows+="${CREATED_AT_EPOCH}"$'\t'"${snapshot_id}"$'\t'"${REPO_COUNT}"$'\t'"${SNAPSHOT_ORIGIN}"$'\t'"${ROOT_REPO}"$'\n'
   done < <(_git_snapshot_store_list_snapshot_ids "${root_repo}")
 
-  distinct_root_count="$(printf "%s" "${rows}" | awk -F'\t' 'NF >= 5 && $5 != "" {print $5}' | sort -u | awk 'END {print NR + 0}')"
+  unique_roots="$(printf "%s" "${rows}" | awk -F'\t' 'NF >= 5 && $5 != "" {print $5}' | sort -u)"
+  distinct_root_count="$(printf "%s\n" "${unique_roots}" | awk 'NF {count++} END {print count + 0}')"
   if [[ "${distinct_root_count}" -gt 1 ]]; then
     show_root_column="true"
+  elif [[ "${distinct_root_count}" -eq 1 ]]; then
+    only_root="$(printf "%s\n" "${unique_roots}" | awk 'NF {print; exit}')"
+    if [[ "${only_root}" != "${root_repo}" ]]; then
+      show_root_column="true"
+    fi
   fi
 
   if [[ "${visible_count}" -eq 0 ]]; then

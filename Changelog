@@ -1,3 +1,18 @@
+v1.0.22 (2026-02-27)
+
+* Refine `git-snapshot list` root-column visibility rule:
+  - show `Root` when visible snapshots are not all from current root
+  - hide `Root` only when all visible snapshots belong to current root.
+
+* Preserve explicit newest-first list ordering across roots by
+  `created_at_epoch` descending.
+
+* Add regression coverage for single-foreign-root listing:
+  - listing from one same-name repo while visible snapshots come only from
+    the other copy now keeps the `Root` column visible.
+
+* Update help/README/skill contract text to match the final root-column rule.
+
 v1.0.21 (2026-02-27)
 
 * Document and surface shared snapshot-registry behavior for same-name repos:

@@ -170,7 +170,7 @@ Lists snapshots for the resolved root-most repo.
 - Default human mode prints a hint with hidden auto-snapshot count when any are filtered.
 - `--include-auto`: include both user-created and auto-generated snapshots.
 - When `--include-auto` is used in human mode, table adds `Auto` column (`*` means auto-generated).
-- Human mode adds a `Root` column only when visible snapshots come from multiple root paths.
+- Human mode adds a `Root` column when visible snapshots are not all from the current root path.
 - `--porcelain`: stable tab-delimited rows with key/value fields including `origin=<user|auto>`.
 - Human mode prints a note that snapshot registry is keyed by root repo folder name.
   Repositories with the same folder name share one snapshot registry namespace.

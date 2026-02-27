@@ -79,8 +79,8 @@ Follow this sequence and report each step.
 - `git-snapshot list` hides auto-generated snapshots by default and prints a hint when hidden rows exist.
 - Use `git-snapshot list --include-auto` when safety/internal snapshots must be visible.
 - Human `git-snapshot list` output always prints a note that snapshot registry is keyed by folder
-  name (same-name repos share the registry), and prints the root-path column only when visible
-  snapshots come from multiple roots.
+  name (same-name repos share the registry), and prints the root-path column when visible
+  snapshots are not all from current root.
 - `create --clear` has confirmation by default (`[y/N]`) unless `--yes` or `GIT_SNAPSHOT_CONFIRM_CLEAR=YES` is provided.
 - `reset-all` asks whether to create an auto snapshot only when neither `--snapshot` nor `--no-snapshot` is provided.
 

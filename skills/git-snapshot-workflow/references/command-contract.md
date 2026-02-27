@@ -40,7 +40,7 @@
 - `git-snapshot list [--include-auto] [--porcelain]`
   - Default output hides auto-generated internal snapshots (for example restore safety snapshots).
   - Human output: table (id, created, age, repo count).
-  - Human output includes `Root` column only when visible snapshots come from multiple root paths.
+  - Human output includes `Root` column when visible snapshots are not all from current root path.
   - Default human list prints a hint with hidden auto-snapshot count when any are filtered.
   - `--include-auto` shows both user-created and auto-generated snapshots.
   - When `--include-auto` is used in human mode, table includes `Auto` column (`*` means auto-generated).
