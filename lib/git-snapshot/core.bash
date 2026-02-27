@@ -28,7 +28,7 @@ Usage
 -----
   git-snapshot create [snapshot_id] [--clear] [--yes]
   git-snapshot rename <old_snapshot_id> <new_snapshot_id> [--porcelain]
-  git-snapshot list [--porcelain]
+  git-snapshot list [--include-auto] [--porcelain]
   git-snapshot inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--name-only|--stat|--diff] [--porcelain]
   git-snapshot restore-check <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]
   git-snapshot verify <snapshot_id> [--repo <rel_path>] [--strict-head] [--porcelain]
@@ -68,14 +68,18 @@ rename <old_snapshot_id> <new_snapshot_id>
 
 list
   Lists snapshots for the resolved root-most repo.
+  Default list view hides auto-generated internal snapshots.
+  Optional flags:
+  - `--include-auto` : include auto-generated snapshots in listing output
   Human output columns:
   - ID
   - Created (local timezone)
   - Age
   - Repos
+  - Auto (`*` means auto-generated; shown only when `--include-auto` is used)
   Porcelain output:
   - one `snapshot\t...` line per snapshot
-  - fields: id, created_at_epoch, repo_count, root_repo
+  - fields: id, created_at_epoch, repo_count, root_repo, origin
 
   inspect
   Inspects captured bundle content without mutating current repos.
@@ -184,6 +188,7 @@ Create and inspect:
 
 Machine output:
   git-snapshot list --porcelain
+  git-snapshot list --include-auto --porcelain
   git-snapshot inspect before-rebase --porcelain
 
 Deep inspection:
@@ -274,6 +279,7 @@ _git_snapshot_create_internal() {
   local label="${2:-snapshot}"
   local print_info="${3:-true}"
   local explicit_snapshot_id="${4:-}"
+  local snapshot_origin="${5:-user}"
 
   _git_snapshot_store_ensure_dirs "${root_repo}"
 
@@ -295,7 +301,7 @@ _git_snapshot_create_internal() {
   done < <(_git_snapshot_repo_collect_all_relative_paths "${root_repo}")
 
   local repo_count="${#rel_paths[@]}"
-  _git_snapshot_store_write_snapshot_meta "${snapshot_path}" "${snapshot_id}" "${root_repo}" "${repo_count}"
+  _git_snapshot_store_write_snapshot_meta "${snapshot_path}" "${snapshot_id}" "${root_repo}" "${repo_count}" "" "${snapshot_origin}"
 
   local repos_tsv="${snapshot_path}/repos.tsv"
   : > "${repos_tsv}"
@@ -655,7 +661,7 @@ _git_snapshot_cmd_create() {
     _git_snapshot_ui_confirm_yes_no "Proceed with clear? [y/N]: " "GIT_SNAPSHOT_CONFIRM_CLEAR" "YES" || return 1
   fi
 
-  snapshot_id="$(_git_snapshot_create_internal "${root_repo}" "snapshot" false "${snapshot_id_override}")" || return 1
+  snapshot_id="$(_git_snapshot_create_internal "${root_repo}" "snapshot" false "${snapshot_id_override}" "user")" || return 1
   snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
   _git_snapshot_store_load_snapshot_meta "${snapshot_path}" || return 1
   _git_snapshot_ui_info "Created snapshot ${snapshot_id} (repos=${REPO_COUNT})"
@@ -739,9 +745,13 @@ _git_snapshot_cmd_list() {
   local root_repo="$1"
   shift
   local porcelain="false"
+  local include_auto="false"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
+      --include-auto)
+        include_auto="true"
+        ;;
       --porcelain)
         porcelain="true"
         ;;
@@ -754,12 +764,19 @@ _git_snapshot_cmd_list() {
   done
 
   local snapshot_id snapshot_path
+  local hidden_auto_count=0
+  local visible_count=0
   if [[ "${porcelain}" == "true" ]]; then
     while IFS= read -r snapshot_id; do
       [[ -z "${snapshot_id}" ]] && continue
       snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
       _git_snapshot_store_load_snapshot_meta "${snapshot_path}"
-      printf "snapshot\tid=%s\tcreated_at_epoch=%s\trepo_count=%s\troot_repo=%s\n" "${snapshot_id}" "${CREATED_AT_EPOCH}" "${REPO_COUNT}" "${ROOT_REPO}"
+      if [[ "${include_auto}" != "true" && "${SNAPSHOT_ORIGIN}" == "auto" ]]; then
+        hidden_auto_count=$((hidden_auto_count + 1))
+        continue
+      fi
+      visible_count=$((visible_count + 1))
+      printf "snapshot\tid=%s\tcreated_at_epoch=%s\trepo_count=%s\troot_repo=%s\torigin=%s\n" "${snapshot_id}" "${CREATED_AT_EPOCH}" "${REPO_COUNT}" "${ROOT_REPO}" "${SNAPSHOT_ORIGIN}"
     done < <(_git_snapshot_store_list_snapshot_ids "${root_repo}")
     return 0
   fi
@@ -769,23 +786,53 @@ _git_snapshot_cmd_list() {
     [[ -z "${snapshot_id}" ]] && continue
     snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
     _git_snapshot_store_load_snapshot_meta "${snapshot_path}"
-    rows+="${CREATED_AT_EPOCH}"$'\t'"${snapshot_id}"$'\t'"${REPO_COUNT}"$'\n'
+    if [[ "${include_auto}" != "true" && "${SNAPSHOT_ORIGIN}" == "auto" ]]; then
+      hidden_auto_count=$((hidden_auto_count + 1))
+      continue
+    fi
+    visible_count=$((visible_count + 1))
+    rows+="${CREATED_AT_EPOCH}"$'\t'"${snapshot_id}"$'\t'"${REPO_COUNT}"$'\t'"${SNAPSHOT_ORIGIN}"$'\n'
   done < <(_git_snapshot_store_list_snapshot_ids "${root_repo}")
 
-  if [[ -z "${rows}" ]]; then
-    printf "No snapshots found (%s)\n" "${root_repo}"
+  if [[ "${visible_count}" -eq 0 ]]; then
+    if [[ "${include_auto}" == "true" ]]; then
+      printf "No snapshots found (%s)\n" "${root_repo}"
+      return 0
+    fi
+    printf "No user-created snapshots found (%s)\n" "${root_repo}"
+    if [[ "${hidden_auto_count}" -gt 0 ]]; then
+      printf "Hint: %s auto-generated snapshot(s) hidden. Run: git-snapshot list --include-auto\n" "${hidden_auto_count}"
+    fi
     return 0
   fi
 
   printf "Snapshots (%s)\n" "${root_repo}"
-  printf "%-28s %-19s %-6s %-5s\n" "ID" "Created" "Age" "Repos"
-  while IFS=$'\t' read -r epoch snapshot_id repo_count; do
+  if [[ "${include_auto}" == "true" ]]; then
+    printf "%-28s %-19s %-6s %-5s %-4s\n" "ID" "Created" "Age" "Repos" "Auto"
+  else
+    printf "%-28s %-19s %-6s %-5s\n" "ID" "Created" "Age" "Repos"
+  fi
+  while IFS=$'\t' read -r epoch snapshot_id repo_count snapshot_origin; do
     [[ -z "${snapshot_id}" ]] && continue
     local created age
     created="$(_git_snapshot_inspect_format_epoch_local "${epoch}")"
     age="$(_git_snapshot_inspect_age "${epoch}")"
-    printf "%-28s %-19s %-6s %-5s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}"
+    if [[ "${include_auto}" == "true" ]]; then
+      local auto_marker=""
+      if [[ "${snapshot_origin}" == "auto" ]]; then
+        auto_marker="*"
+      fi
+      printf "%-28s %-19s %-6s %-5s %-4s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}" "${auto_marker}"
+    else
+      printf "%-28s %-19s %-6s %-5s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}"
+    fi
   done < <(printf "%s" "${rows}" | sort -rn)
+
+  if [[ "${include_auto}" == "true" ]]; then
+    printf "* = auto-generated snapshot\n"
+  elif [[ "${hidden_auto_count}" -gt 0 ]]; then
+    printf "Hint: %s auto-generated snapshot(s) hidden. Run: git-snapshot list --include-auto\n" "${hidden_auto_count}"
+  fi
 }
 
 _git_snapshot_diff_render_human_category() {

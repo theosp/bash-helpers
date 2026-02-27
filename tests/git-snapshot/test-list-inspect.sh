@@ -30,6 +30,7 @@ assert_contains "Hint: use --name-only for file paths or --diff for full patch o
 
 list_porcelain_output="$(cd "${root_repo}" && git_snapshot_test_cmd list --porcelain)"
 assert_contains $'snapshot\tid='"${snapshot_id}" "${list_porcelain_output}" "list porcelain should include snapshot row"
+assert_contains "origin=user" "${list_porcelain_output}" "list porcelain should include snapshot origin metadata"
 
 inspect_porcelain_output="$(cd "${root_repo}" && git_snapshot_test_cmd inspect "${snapshot_id}" --porcelain)"
 assert_contains $'inspect\tsnapshot_id='"${snapshot_id}" "${inspect_porcelain_output}" "inspect porcelain should include snapshot id"

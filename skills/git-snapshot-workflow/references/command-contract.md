@@ -19,9 +19,13 @@
   - Fails when old id does not exist or new id already exists.
   - Porcelain output: `renamed\told_id=...\tnew_id=...`
 
-- `git-snapshot list [--porcelain]`
+- `git-snapshot list [--include-auto] [--porcelain]`
+  - Default output hides auto-generated internal snapshots (for example restore safety snapshots).
   - Human output: table (id, created, age, repo count).
-  - Porcelain output: tab-delimited `snapshot` rows with key/value fields.
+  - Default human list prints a hint with hidden auto-snapshot count when any are filtered.
+  - `--include-auto` shows both user-created and auto-generated snapshots.
+  - When `--include-auto` is used in human mode, table includes `Auto` column (`*` means auto-generated).
+  - Porcelain output: tab-delimited `snapshot` rows with key/value fields including `origin=<user|auto>`.
 
 - `git-snapshot inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--name-only|--stat|--diff] [--porcelain]`
   - Human default includes summary plus per-repo `--stat` detail.

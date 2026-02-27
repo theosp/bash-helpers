@@ -1,3 +1,22 @@
+v1.0.19 (2026-02-27)
+
+* Add snapshot origin metadata (`user` vs `auto`) to snapshot metadata and
+  propagate it through rename and metadata loading.
+
+* Mark restore safety snapshots as auto-generated.
+
+* Update `git-snapshot list` to reduce noise by default:
+  - hide auto-generated snapshots from default list output
+  - add `--include-auto` to show all snapshots
+  - print hidden auto-snapshot count hint in default human mode.
+
+* Add list origin visibility improvements:
+  - include `Auto` marker column (`*`) in human mode when `--include-auto` is used
+  - include `origin=<user|auto>` in porcelain list rows.
+
+* Update help/docs/skill contract and add regression coverage for list filtering,
+  hint messaging, include-auto behavior, and porcelain origin fields.
+
 v1.0.18 (2026-02-27)
 
 * Change `git-snapshot restore` default conflict policy to reject mode:

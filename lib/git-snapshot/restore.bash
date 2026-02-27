@@ -408,7 +408,7 @@ _git_snapshot_restore_with_optional_rollback() {
 
   local safety_snapshot_id=""
   if [[ "${skip_safety_snapshot}" != "true" ]]; then
-    safety_snapshot_id="$(_git_snapshot_create_internal "${root_repo}" "safety-before-restore-${target_snapshot_id}" false)"
+    safety_snapshot_id="$(_git_snapshot_create_internal "${root_repo}" "safety-before-restore-${target_snapshot_id}" false "" "auto")"
     if [[ "${porcelain}" != "true" ]]; then
       _git_snapshot_ui_info "Created safety snapshot: ${safety_snapshot_id}"
     fi
@@ -510,7 +510,7 @@ _git_snapshot_restore_with_reject_mode() {
   _git_snapshot_store_assert_snapshot_exists "${root_repo}" "${target_snapshot_id}"
 
   local safety_snapshot_id
-  safety_snapshot_id="$(_git_snapshot_create_internal "${root_repo}" "safety-before-restore-${target_snapshot_id}" false)"
+  safety_snapshot_id="$(_git_snapshot_create_internal "${root_repo}" "safety-before-restore-${target_snapshot_id}" false "" "auto")"
   if [[ "${porcelain}" != "true" ]]; then
     _git_snapshot_ui_info "Created safety snapshot: ${safety_snapshot_id}"
   fi

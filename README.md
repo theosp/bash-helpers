@@ -130,12 +130,16 @@ Renames an existing snapshot id.
 - `--porcelain` prints stable machine output:
   `renamed\told_id=<old>\tnew_id=<new>`
 
-### `git-snapshot list [--porcelain]`
+### `git-snapshot list [--include-auto] [--porcelain]`
 
 Lists snapshots for the resolved root-most repo.
 
-- Default output: human table (`ID`, `Created`, `Age`, `Repos`)
-- `--porcelain`: one stable tab-delimited line per snapshot with key/value fields
+- Default output: human table (`ID`, `Created`, `Age`, `Repos`) for user-created snapshots only.
+- Auto-generated internal snapshots are hidden by default (for example restore safety snapshots).
+- Default human mode prints a hint with hidden auto-snapshot count when any are filtered.
+- `--include-auto`: include both user-created and auto-generated snapshots.
+- When `--include-auto` is used in human mode, table adds `Auto` column (`*` means auto-generated).
+- `--porcelain`: stable tab-delimited rows with key/value fields including `origin=<user|auto>`.
 
 ### `git-snapshot inspect <snapshot_id> [options]`
 
@@ -248,6 +252,7 @@ Examples:
 
 ```bash
 git-snapshot list --porcelain
+git-snapshot list --include-auto --porcelain
 git-snapshot inspect before-rebase --porcelain
 git-snapshot restore-check before-rebase --porcelain
 ```

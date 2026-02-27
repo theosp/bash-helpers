@@ -109,17 +109,24 @@ _git_snapshot_store_write_snapshot_meta() {
   local root_repo="$3"
   local repo_count="$4"
   local created_at_epoch="${5:-}"
+  local snapshot_origin="${6:-user}"
 
   if [[ -z "${created_at_epoch}" ]]; then
     created_at_epoch="$(date +%s)"
   fi
 
+  if [[ "${snapshot_origin}" != "user" && "${snapshot_origin}" != "auto" ]]; then
+    _git_snapshot_ui_err "Invalid snapshot origin: ${snapshot_origin} (expected user|auto)"
+    return 1
+  fi
+
   {
-    printf "FORMAT=git_snapshot_meta_v2\n"
+    printf "FORMAT=git_snapshot_meta_v3\n"
     printf "SNAPSHOT_ID_B64=%s\n" "$(_git_snapshot_store_base64_encode "${snapshot_id}")"
     printf "CREATED_AT_EPOCH=%s\n" "${created_at_epoch}"
     printf "ROOT_REPO_B64=%s\n" "$(_git_snapshot_store_base64_encode "${root_repo}")"
     printf "REPO_COUNT=%s\n" "${repo_count}"
+    printf "SNAPSHOT_ORIGIN=%s\n" "${snapshot_origin}"
   } > "${snapshot_path}/meta.env"
 }
 
@@ -150,7 +157,7 @@ _git_snapshot_store_rename_snapshot() {
     return 1
   fi
 
-  if ! _git_snapshot_store_write_snapshot_meta "${new_snapshot_path}" "${new_snapshot_id}" "${ROOT_REPO}" "${REPO_COUNT}" "${CREATED_AT_EPOCH}"; then
+  if ! _git_snapshot_store_write_snapshot_meta "${new_snapshot_path}" "${new_snapshot_id}" "${ROOT_REPO}" "${REPO_COUNT}" "${CREATED_AT_EPOCH}" "${SNAPSHOT_ORIGIN}"; then
     _git_snapshot_ui_err "Failed to update snapshot metadata after rename; rolling back snapshot path."
     mv "${new_snapshot_path}" "${old_snapshot_path}" 2>/dev/null || true
     return 1
@@ -173,10 +180,12 @@ _git_snapshot_store_load_snapshot_meta() {
   local created_at_epoch=""
   local root_repo=""
   local repo_count=""
+  local snapshot_origin=""
   local legacy_snapshot_id=""
   local legacy_created_at_epoch=""
   local legacy_root_repo=""
   local legacy_repo_count=""
+  local legacy_snapshot_origin=""
   local line key value
 
   while IFS= read -r line || [[ -n "${line}" ]]; do
@@ -208,6 +217,10 @@ _git_snapshot_store_load_snapshot_meta() {
         repo_count="${value}"
         legacy_repo_count="${value}"
         ;;
+      SNAPSHOT_ORIGIN)
+        snapshot_origin="${value}"
+        legacy_snapshot_origin="${value}"
+        ;;
       SNAPSHOT_ID)
         legacy_snapshot_id="$(_git_snapshot_store_decode_legacy_meta_value "${value}")"
         ;;
@@ -221,17 +234,24 @@ _git_snapshot_store_load_snapshot_meta() {
     esac
   done < "${meta_file}"
 
-  if [[ "${format}" == "git_snapshot_meta_v2" ]]; then
+  if [[ "${format}" == "git_snapshot_meta_v2" || "${format}" == "git_snapshot_meta_v3" ]]; then
     SNAPSHOT_ID="${snapshot_id}"
     CREATED_AT_EPOCH="${created_at_epoch}"
     ROOT_REPO="${root_repo}"
     REPO_COUNT="${repo_count}"
+    SNAPSHOT_ORIGIN="${snapshot_origin}"
   else
     # Legacy snapshot format fallback (pre-v2). Decode safely without source/eval.
     SNAPSHOT_ID="${legacy_snapshot_id}"
     CREATED_AT_EPOCH="${legacy_created_at_epoch}"
     ROOT_REPO="${legacy_root_repo}"
     REPO_COUNT="${legacy_repo_count}"
+    SNAPSHOT_ORIGIN="${legacy_snapshot_origin}"
+  fi
+
+  if [[ -z "${SNAPSHOT_ORIGIN}" ]]; then
+    # Legacy snapshots did not persist origin; default to user-created.
+    SNAPSHOT_ORIGIN="user"
   fi
 
   if [[ -z "${SNAPSHOT_ID}" || -z "${ROOT_REPO}" || -z "${CREATED_AT_EPOCH}" || -z "${REPO_COUNT}" ]]; then
@@ -246,6 +266,11 @@ _git_snapshot_store_load_snapshot_meta() {
 
   if [[ ! "${REPO_COUNT}" =~ ^[0-9]+$ ]]; then
     _git_snapshot_ui_err "Snapshot metadata has invalid REPO_COUNT: ${REPO_COUNT}"
+    return 1
+  fi
+
+  if [[ "${SNAPSHOT_ORIGIN}" != "user" && "${SNAPSHOT_ORIGIN}" != "auto" ]]; then
+    _git_snapshot_ui_err "Snapshot metadata has invalid SNAPSHOT_ORIGIN: ${SNAPSHOT_ORIGIN}"
     return 1
   fi
 }

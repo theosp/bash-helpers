@@ -72,6 +72,8 @@ Follow this sequence and report each step.
 - Restore creates a safety snapshot automatically.
 - In `--on-conflict reject` mode, partial restore may be intentional (no auto-rollback for merge rejects/collisions).
 - In `--on-conflict rollback` mode, restore auto-rolls back on failure.
+- `git-snapshot list` hides auto-generated snapshots by default and prints a hint when hidden rows exist.
+- Use `git-snapshot list --include-auto` when safety/internal snapshots must be visible.
 - `create --clear` has confirmation by default (`[y/N]`) unless `--yes` or `GIT_SNAPSHOT_CONFIRM_CLEAR=YES` is provided.
 
 ## Snapshot id policy
