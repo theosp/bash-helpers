@@ -165,12 +165,14 @@ Renames an existing snapshot id.
 
 Lists snapshots for the resolved root-most repo.
 
-- Default output: human table (`ID`, `Created`, `Age`, `Repos`) for user-created snapshots only.
+- Default output: human multiline rows for user-created snapshots only.
+  - first line: snapshot `ID`
+  - second line: labeled details (`Created`, `Age`, `Repos`)
 - Auto-generated internal snapshots are hidden by default (for example restore safety snapshots).
 - Default human mode prints a hint with hidden auto-snapshot count when any are filtered.
 - `--include-auto`: include both user-created and auto-generated snapshots.
-- When `--include-auto` is used in human mode, table adds `Auto` column (`*` means auto-generated).
-- Human mode adds a `Root` column when visible snapshots are not all from the current root path.
+- When `--include-auto` is used in human mode, auto snapshots include `Auto: *` in the details line.
+- Human mode adds `Root: <path>` in details when visible snapshots are not all from the current root path.
 - `--porcelain`: stable tab-delimited rows with key/value fields including `origin=<user|auto>`.
 - Human mode prints a note that snapshot registry is keyed by root repo folder name.
   Repositories with the same folder name share one snapshot registry namespace.

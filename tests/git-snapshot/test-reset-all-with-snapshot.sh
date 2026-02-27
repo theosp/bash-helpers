@@ -53,10 +53,10 @@ assert_contains "Hint: 1 auto-generated snapshot(s) hidden. Run: git-snapshot li
 
 list_all_output="$(cd "${root_repo}" && git_snapshot_test_cmd list --include-auto)"
 assert_contains "${auto_snapshot_id}" "${list_all_output}" "include-auto list should include reset-all auto snapshot"
-assert_contains "Auto" "${list_all_output}" "include-auto list should show auto marker column"
+assert_contains "Auto: *" "${list_all_output}" "include-auto list should show auto marker on details line"
 assert_contains "* = auto-generated snapshot" "${list_all_output}" "include-auto list should show auto marker legend"
-auto_row="$(printf "%s\n" "${list_all_output}" | awk -v sid="${auto_snapshot_id}" '$1 == sid {print; exit}')"
-assert_contains "*" "${auto_row}" "reset-all auto snapshot row should include marker"
+auto_details="$(printf "%s\n" "${list_all_output}" | awk -v sid="${auto_snapshot_id}" '$0 == sid {getline; print; exit}')"
+assert_contains "Auto: *" "${auto_details}" "reset-all auto snapshot details should include marker"
 
 list_porcelain_output="$(cd "${root_repo}" && git_snapshot_test_cmd list --include-auto --porcelain)"
 assert_contains $'snapshot\tid='"${auto_snapshot_id}"$'\t' "${list_porcelain_output}" "include-auto porcelain should include reset-all auto snapshot"

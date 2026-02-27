@@ -40,11 +40,17 @@ assert_contains "${snapshot_a_id}" "${list_output}" "list should include snapsho
 assert_contains "${snapshot_b_id}" "${list_output}" "list should include snapshot from second repo copy"
 assert_contains "${repo_a_real}" "${list_output}" "list should show root path for first repo snapshot"
 assert_contains "${repo_b_real}" "${list_output}" "list should show root path for second repo snapshot"
-assert_contains "Root" "${list_output}" "list should include root column"
+assert_contains "Root:" "${list_output}" "list should include root field in details line"
 assert_contains "Note: snapshot registry is keyed by root repo folder name." "${list_output}" "list should include shared registry note"
 first_snapshot_id="$(printf "%s\n" "${list_output}" | awk '
-  /^ID[[:space:]]+Created[[:space:]]+Age[[:space:]]+Repos/ {in_table=1; next}
-  in_table && $1 != "" {print $1; exit}
+  /^ID$/ {in_list=1; next}
+  !in_list {next}
+  /^  / {next}
+  /^$/ {next}
+  /^\* = / {next}
+  /^Hint:/ {next}
+  /^Note:/ {next}
+  {print; exit}
 ')"
 assert_eq "${snapshot_b_id}" "${first_snapshot_id}" "list should sort snapshots newest-first regardless of root path"
 

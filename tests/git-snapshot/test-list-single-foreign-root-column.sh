@@ -28,6 +28,6 @@ assert_eq "foreign-only" "${snapshot_id}" "foreign snapshot id should be preserv
 
 list_output="$(cd "${repo_a}" && git_snapshot_test_cmd list)"
 assert_contains "${snapshot_id}" "${list_output}" "list should include foreign snapshot id"
-assert_contains "Root" "${list_output}" "list should include root column when only visible snapshot is foreign"
+assert_contains "Root:" "${list_output}" "list should include root field when only visible snapshot is foreign"
 assert_contains "${repo_b_real}" "${list_output}" "list should show foreign root path"
 assert_contains "Note: snapshot registry is keyed by root repo folder name." "${list_output}" "list should include shared registry note"

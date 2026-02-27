@@ -1,3 +1,16 @@
+v1.0.25 (2026-02-27)
+
+* Redesign `git-snapshot list` human output for long snapshot IDs:
+  - print each snapshot as two lines (`ID` line + labeled details line)
+  - include a blank line between snapshot entries for readability.
+
+* Keep root/auto indicators in the details line:
+  - show `Root: <path>` when visible snapshots are not all from current root
+  - show `Auto: *` for auto-generated snapshots in `--include-auto` mode.
+
+* Update help/README/skill contract text and list-format regression tests
+  to match the new multiline human output format.
+
 v1.0.24 (2026-02-27)
 
 * Improve `git-snapshot reset-all` defaults and naming:

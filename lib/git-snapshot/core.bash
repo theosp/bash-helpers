@@ -91,11 +91,9 @@ list
   Default list view hides auto-generated internal snapshots.
   Optional flags:
   - `--include-auto` : include auto-generated snapshots in listing output
-  Human output columns:
-  - ID
-  - Created (local timezone)
-  - Age
-  - Repos
+  Human output format:
+  - one line for snapshot ID
+  - one labeled details line (Created/Age/Repos)
   - Root (snapshot source root path; shown when visible snapshots are not all from current root)
   - Auto (`*` means auto-generated; shown only when `--include-auto` is used)
   Note:
@@ -1007,50 +1005,31 @@ _git_snapshot_cmd_list() {
   fi
 
   printf "Snapshots (%s)\n" "${root_repo}"
-  if [[ "${include_auto}" == "true" ]]; then
-    if [[ "${show_root_column}" == "true" ]]; then
-      printf "%-36s %-19s %-6s %-7s %-48s %-4s\n" "ID" "Created" "Age" "Repos" "Root" "Auto"
-    else
-      printf "%-36s %-19s %-6s %-7s %-4s\n" "ID" "Created" "Age" "Repos" "Auto"
-    fi
-  else
-    if [[ "${show_root_column}" == "true" ]]; then
-      printf "%-36s %-19s %-6s %-7s %-48s\n" "ID" "Created" "Age" "Repos" "Root"
-    else
-      printf "%-36s %-19s %-6s %-7s\n" "ID" "Created" "Age" "Repos"
-    fi
-  fi
+  printf "ID\n"
   while IFS=$'\t' read -r epoch snapshot_id repo_count snapshot_origin snapshot_root_repo; do
     [[ -z "${snapshot_id}" ]] && continue
-    local created age
+    local created age details_line
     created="$(_git_snapshot_inspect_format_epoch_local "${epoch}")"
     age="$(_git_snapshot_inspect_age "${epoch}")"
-    if [[ "${include_auto}" == "true" ]]; then
-      local auto_marker=""
-      if [[ "${snapshot_origin}" == "auto" ]]; then
-        auto_marker="*"
-      fi
-      if [[ "${show_root_column}" == "true" ]]; then
-        printf "%-36s %-19s %-6s %-7s %-48s %-4s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}" "${snapshot_root_repo}" "${auto_marker}"
-      else
-        printf "%-36s %-19s %-6s %-7s %-4s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}" "${auto_marker}"
-      fi
-    else
-      if [[ "${show_root_column}" == "true" ]]; then
-        printf "%-36s %-19s %-6s %-7s %-48s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}" "${snapshot_root_repo}"
-      else
-        printf "%-36s %-19s %-6s %-7s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}"
-      fi
+    printf "%s\n" "${snapshot_id}"
+    details_line="  Created: ${created}   Age: ${age}   Repos: ${repo_count}"
+    if [[ "${show_root_column}" == "true" ]]; then
+      details_line+="   Root: ${snapshot_root_repo}"
     fi
+    if [[ "${include_auto}" == "true" && "${snapshot_origin}" == "auto" ]]; then
+      details_line+="   Auto: *"
+    fi
+    printf "%s\n" "${details_line}"
+    printf "\n"
   done < <(printf "%s" "${rows}" | sort -t$'\t' -k1,1nr)
 
   if [[ "${include_auto}" == "true" ]]; then
     printf "* = auto-generated snapshot\n"
-  elif [[ "${hidden_auto_count}" -gt 0 ]]; then
     printf "\n"
+  elif [[ "${hidden_auto_count}" -gt 0 ]]; then
     printf "Hint: %s auto-generated snapshot(s) hidden. Run: git-snapshot list --include-auto\n" "${hidden_auto_count}"
+    printf "\n"
   fi
-  printf "\n"
   printf "Note: snapshot registry is keyed by root repo folder name. Repositories sharing the same folder name share this registry.\n"
 }
 
