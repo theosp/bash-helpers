@@ -1,3 +1,25 @@
+v1.0.18 (2026-02-27)
+
+* Change `git-snapshot restore` default conflict policy to reject mode:
+  - default behavior now matches `--on-conflict reject`
+  - rejected tracked hunks are left as `*.rej` for manual resolution
+  - untracked path collisions are preserved and reported
+  - partial restore in reject mode exits with code `4`.
+
+* Keep explicit rollback mode for atomic semantics:
+  - `--on-conflict rollback` retains automatic rollback-on-failure behavior.
+
+* Add restore porcelain support for automation:
+  - add `--porcelain` for restore with stable `restore_*` records
+  - include per-repo status, reject/collision rows, rollback rows, and summary.
+
+* Harden restore porcelain hard-failure schema:
+  - normalize hard-failure rows to always emit both `repo` and `reason`
+    fields, including status-hash mismatch failures.
+
+* Update help/docs/skill contract and regression coverage for new restore
+  defaults, conflict modes, exit codes, and porcelain behavior.
+
 v1.0.17 (2026-02-26)
 
 * Fix restore verification ordering in nested submodule trees:

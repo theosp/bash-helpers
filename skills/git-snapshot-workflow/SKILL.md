@@ -52,7 +52,12 @@ Follow this sequence and report each step.
 
 3. Restore snapshot (only on explicit user restore intent)
 - Explain restore is destructive for tracked changes and untracked non-ignored files.
+- Default restore mode is conflict-tolerant (`--on-conflict reject`):
+  - applies compatible hunks
+  - leaves `*.rej` for rejected hunks
+  - reports untracked collisions and returns exit `4` for partial restore
 - Run: `git-snapshot restore <snapshot_id>`.
+- Use `--on-conflict rollback` only when the user explicitly wants atomic rollback semantics.
 - If confirmation is needed in non-interactive mode, use:
   - `GIT_SNAPSHOT_CONFIRM_RESTORE=RESTORE git-snapshot restore <snapshot_id>`
 
@@ -64,7 +69,9 @@ Follow this sequence and report each step.
 ## Safety notes
 
 - If `GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX` is set, command failure means resolved root repo is outside the allowed prefix.
-- Restore may create a safety snapshot automatically and can rollback on failure.
+- Restore creates a safety snapshot automatically.
+- In `--on-conflict reject` mode, partial restore may be intentional (no auto-rollback for merge rejects/collisions).
+- In `--on-conflict rollback` mode, restore auto-rolls back on failure.
 - `create --clear` has confirmation by default (`[y/N]`) unless `--yes` or `GIT_SNAPSHOT_CONFIRM_CLEAR=YES` is provided.
 
 ## Snapshot id policy

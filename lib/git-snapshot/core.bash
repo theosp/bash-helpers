@@ -32,7 +32,7 @@ Usage
   git-snapshot inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--name-only|--stat|--diff] [--porcelain]
   git-snapshot restore-check <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]
   git-snapshot verify <snapshot_id> [--repo <rel_path>] [--strict-head] [--porcelain]
-  git-snapshot restore <snapshot_id>
+  git-snapshot restore <snapshot_id> [--on-conflict <reject|rollback>] [--porcelain]
   git-snapshot delete <snapshot_id>
   git-snapshot debug-dirty
 
@@ -136,11 +136,21 @@ verify
 
 restore
   Restores tracked + untracked non-ignored state from snapshot bundles.
-  Workflow:
-  1) create safety snapshot of current state
-  2) apply snapshot restore
-  3) verify status hashes
-  4) auto-rollback to safety snapshot on restore failure
+  Conflict policy:
+  - default (`--on-conflict reject`):
+    - applies compatible hunks
+    - leaves `*.rej` files for rejected hunks
+    - preserves colliding untracked paths and reports them
+    - exits 4 when manual resolution is required
+  - `--on-conflict rollback`:
+    - preserves atomic behavior
+    - auto-rollbacks to a safety snapshot on restore failure
+  Optional flags:
+  - `--porcelain` : stable machine output (`restore_*` rows)
+  Exit codes:
+  - 0 : restore completed successfully
+  - 4 : partial restore (reject/collision) in reject mode
+  - 1 : usage/runtime error or failed restore
   Requires explicit confirmation (or `GIT_SNAPSHOT_CONFIRM_RESTORE=RESTORE`).
 
 delete
@@ -193,6 +203,8 @@ Deep inspection:
 
 Restore:
   git-snapshot restore before-rebase
+  git-snapshot restore before-rebase --on-conflict rollback
+  git-snapshot restore before-rebase --porcelain
 
 Troubleshooting
 ---------------
@@ -204,6 +216,8 @@ Troubleshooting
   one or more snapshot working-set mismatches were detected.
 - restore failed:
   inspect error details, then use safety snapshot id printed by restore flow.
+- restore exits 4:
+  partial restore in reject mode; resolve `*.rej` and collision files, then verify.
 USAGE
 }
 
@@ -1533,16 +1547,66 @@ _git_snapshot_cmd_verify() {
 
 _git_snapshot_cmd_restore() {
   local root_repo="$1"
-  local snapshot_id="$2"
+  shift
+  local snapshot_id=""
+  local on_conflict="reject"
+  local porcelain="false"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --on-conflict)
+        if [[ -z "${2:-}" ]]; then
+          _git_snapshot_ui_err "Missing value for --on-conflict"
+          return 1
+        fi
+        on_conflict="$2"
+        shift
+        ;;
+      --on-conflict=*)
+        on_conflict="${1#*=}"
+        ;;
+      --porcelain)
+        porcelain="true"
+        ;;
+      -*)
+        _git_snapshot_ui_err "Unknown option for restore: $1"
+        return 1
+        ;;
+      *)
+        if [[ -z "${snapshot_id}" ]]; then
+          snapshot_id="$1"
+        else
+          _git_snapshot_ui_err "Unexpected argument for restore: $1"
+          return 1
+        fi
+        ;;
+    esac
+    shift
+  done
+
+  if [[ -z "${snapshot_id}" ]]; then
+    _git_snapshot_ui_err "Missing snapshot_id for restore"
+    return 1
+  fi
+  if [[ "${on_conflict}" != "reject" && "${on_conflict}" != "rollback" ]]; then
+    _git_snapshot_ui_err "Invalid value for --on-conflict: ${on_conflict} (expected reject|rollback)"
+    return 1
+  fi
 
   _git_snapshot_validate_snapshot_id "${snapshot_id}"
   _git_snapshot_store_assert_snapshot_exists "${root_repo}" "${snapshot_id}"
 
-  _git_snapshot_ui_warn "Restore will overwrite tracked changes and delete untracked files (ignored files stay untouched)."
-  _git_snapshot_ui_warn "A safety snapshot will be created automatically before restore."
+  if [[ "${porcelain}" != "true" ]]; then
+    _git_snapshot_ui_warn "Restore will overwrite tracked changes and delete untracked files (ignored files stay untouched)."
+    _git_snapshot_ui_warn "A safety snapshot will be created automatically before restore."
+  fi
   _git_snapshot_ui_confirm_typed "Type RESTORE to continue: " "RESTORE"
 
-  _git_snapshot_restore_with_optional_rollback "${root_repo}" "${snapshot_id}" false
+  if [[ "${on_conflict}" == "rollback" ]]; then
+    _git_snapshot_restore_with_optional_rollback "${root_repo}" "${snapshot_id}" false "${porcelain}"
+  else
+    _git_snapshot_restore_with_reject_mode "${root_repo}" "${snapshot_id}" "${porcelain}"
+  fi
 }
 
 _git_snapshot_cmd_delete() {
@@ -1596,11 +1660,7 @@ git_snapshot_main() {
       _git_snapshot_cmd_verify "${root_repo}" "$@"
       ;;
     restore)
-      if [[ -z "${1:-}" ]]; then
-        _git_snapshot_ui_err "Missing snapshot_id for restore"
-        return 1
-      fi
-      _git_snapshot_cmd_restore "${root_repo}" "${1}"
+      _git_snapshot_cmd_restore "${root_repo}" "$@"
       ;;
     delete)
       if [[ -z "${1:-}" ]]; then

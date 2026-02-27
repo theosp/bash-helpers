@@ -23,6 +23,8 @@ assert_contains "\`--stat\`      : git apply --stat summary (default: on)" "${he
 assert_not_contains "inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--name-only|--stat|--diff] [--limit <n>|--no-limit]" "${help_output}" "inspect usage should not advertise removed limit flags"
 assert_contains "git-snapshot restore-check <snapshot_id>" "${help_output}" "help should document restore-check command"
 assert_contains "git-snapshot verify <snapshot_id>" "${help_output}" "help should document verify command"
+assert_contains "git-snapshot restore <snapshot_id> [--on-conflict <reject|rollback>] [--porcelain]" "${help_output}" "help should document restore conflict/porcelain flags"
+assert_contains "default (\`--on-conflict reject\`)" "${help_output}" "help should explain default reject restore mode"
 assert_contains "HEAD mismatch is warning-only" "${help_output}" "help should explain default verify head policy"
 assert_contains "Troubleshooting" "${help_output}" "help should include troubleshooting guidance"
 

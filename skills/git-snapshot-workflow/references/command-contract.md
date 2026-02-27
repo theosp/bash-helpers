@@ -55,10 +55,16 @@
     - `3`: mismatches found
     - `1`: usage/runtime error
 
-- `git-snapshot restore <snapshot_id>`
+- `git-snapshot restore <snapshot_id> [--on-conflict <reject|rollback>] [--porcelain]`
   - Restores snapshot target state.
+  - Conflict mode defaults to `--on-conflict reject`:
+    - compatible hunks apply
+    - rejected hunks are written to `*.rej`
+    - untracked path collisions are reported and skipped
+    - command exits `4` for partial restore requiring manual resolution
+  - `--on-conflict rollback` preserves atomic behavior and auto-rollback on restore failure.
+  - `--porcelain` emits stable `restore_*` rows for automation.
   - Requires typed confirmation unless `GIT_SNAPSHOT_CONFIRM_RESTORE=RESTORE` is provided.
-  - Creates safety snapshot and attempts rollback on restore failure.
 
 - `git-snapshot delete <snapshot_id>`
   - Deletes snapshot data for the given id.
@@ -85,3 +91,8 @@ If `GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX` is set, execution is refused when resolved
 `create --clear` confirmation can be bypassed in non-interactive contexts with:
 - `--yes`
 - `GIT_SNAPSHOT_CONFIRM_CLEAR=YES`
+
+`restore` exit codes:
+- `0`: restore fully successful
+- `4`: partial restore (reject/collision) in reject mode
+- `1`: usage/runtime error or failed restore (with rollback attempt when safety snapshot exists)
