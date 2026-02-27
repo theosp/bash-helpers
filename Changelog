@@ -1,3 +1,25 @@
+v1.0.20 (2026-02-27)
+
+* Add `git-snapshot reset-all` for clear-in-place workflows with optional
+  pre-clear auto snapshot creation.
+
+* Add explicit snapshot-choice flags for automation:
+  - `--snapshot` to create an auto snapshot (`before-reset-all-*`, origin=`auto`)
+  - `--no-snapshot` to clear without snapshot creation
+  - interactive prompt only when neither flag is provided
+  - mutual-exclusion validation for conflicting flags.
+
+* Add porcelain output for `reset-all`:
+  - `reset_all_snapshot` row with snapshot decision/result
+  - `reset_all_summary` row with clear totals and exit-code signaling.
+
+* Refactor clear execution internals so `create --clear` and `reset-all`
+  share the same best-effort clear engine and drift/failure accounting.
+
+* Update help/README/skill command contracts and add full regression coverage
+  for reset-all behavior, non-interactive enforcement, conflict handling, and
+  porcelain schema.
+
 v1.0.19 (2026-02-27)
 
 * Add snapshot origin metadata (`user` vs `auto`) to snapshot metadata and

@@ -27,6 +27,7 @@ Restore target exactness
 Usage
 -----
   git-snapshot create [snapshot_id] [--clear] [--yes]
+  git-snapshot reset-all [--snapshot|--no-snapshot] [--porcelain]
   git-snapshot rename <old_snapshot_id> <new_snapshot_id> [--porcelain]
   git-snapshot list [--include-auto] [--porcelain]
   git-snapshot inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--name-only|--stat|--diff] [--porcelain]
@@ -56,6 +57,25 @@ create [snapshot_id] [--clear] [--yes]
   Output contract:
   - final output line is always the snapshot id (including clear-failure cases)
   - informational lines can appear above it
+
+reset-all [--snapshot|--no-snapshot] [--porcelain]
+  Clears root-most repo + initialized recursive submodules:
+    - `git reset --hard`
+    - `git clean -fd`
+  Snapshot choice policy:
+  - `--snapshot`    : create auto snapshot before clear
+  - `--no-snapshot` : clear without pre-clear snapshot
+  - neither flag    : ask `Create auto snapshot before clear? [y/N]:`
+  - both flags      : usage error
+  Notes:
+  - no extra destructive confirmation is asked after snapshot decision
+  - non-interactive mode requires `--snapshot` or `--no-snapshot`
+  - auto snapshots use label prefix `before-reset-all-` and origin `auto`
+  - submodule HEAD drift is warning-only and does not fail clear
+  - clear is best-effort; failures are reported and command exits non-zero
+  Porcelain output:
+  - `reset_all_snapshot\tcreated=<true|false>\tsnapshot_id=<id-or-empty>`
+  - `reset_all_summary\tresult=<success|failed>\tsnapshot_created=<true|false>\tsnapshot_id=<id-or-empty>\trepos_total=<n>\trepos_cleared=<n>\trepos_failed=<n>\texit_code=<0|1>`
 
 rename <old_snapshot_id> <new_snapshot_id>
   Renames an existing snapshot id.
@@ -181,12 +201,14 @@ Examples
 Create and inspect:
   git-snapshot create
   git-snapshot create --clear --yes
+  git-snapshot reset-all --snapshot
   git-snapshot create before-rebase
   git-snapshot create before-task-switch --clear
   git-snapshot rename before-rebase before-rebase-validated
   git-snapshot list
 
 Machine output:
+  git-snapshot reset-all --no-snapshot --porcelain
   git-snapshot list --porcelain
   git-snapshot list --include-auto --porcelain
   git-snapshot inspect before-rebase --porcelain
@@ -551,23 +573,28 @@ _git_snapshot_detect_submodule_drift_paths() {
   git -C "${root_repo}" submodule status --recursive 2>/dev/null | awk '/^\+/ {print $2}'
 }
 
-_git_snapshot_clear_from_snapshot() {
+_git_snapshot_clear_from_rel_paths() {
   local root_repo="$1"
-  local snapshot_id="$2"
-  local snapshot_path
+  local rel_paths="$2"
+  local emit_human="${3:-true}"
+  local operation_label="${4:---clear}"
   local total_repos=0
   local cleared_repos=0
   local failed_repos=0
-  local repo_id rel_path _head _status_hash repo_abs failure_reason human_repo_label
+  local rel_path repo_abs failure_reason human_repo_label
   local -a failures=()
   local drift_paths=""
   local drift_count=0
 
-  snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
-  _git_snapshot_store_assert_snapshot_exists "${root_repo}" "${snapshot_id}" || return 1
+  GSN_CLEAR_TOTAL_REPOS=0
+  GSN_CLEAR_CLEARED_REPOS=0
+  GSN_CLEAR_FAILED_REPOS=0
+  GSN_CLEAR_FAILURES=""
+  GSN_CLEAR_DRIFT_COUNT=0
+  GSN_CLEAR_DRIFT_PATHS=""
 
-  while IFS=$'\t' read -r repo_id rel_path _head _status_hash; do
-    [[ -z "${repo_id}" ]] && continue
+  while IFS= read -r rel_path; do
+    [[ -z "${rel_path}" ]] && continue
     total_repos=$((total_repos + 1))
     repo_abs="${root_repo}/${rel_path}"
     human_repo_label="$(_git_snapshot_human_repo_label "${root_repo}" "${rel_path}")"
@@ -579,7 +606,7 @@ _git_snapshot_clear_from_snapshot() {
     fi
 
     cleared_repos=$((cleared_repos + 1))
-  done < <(_git_snapshot_store_read_repo_entries "${snapshot_path}")
+  done <<< "${rel_paths}"
 
   drift_paths="$(_git_snapshot_detect_submodule_drift_paths "${root_repo}")"
   if [[ -n "${drift_paths}" ]]; then
@@ -587,25 +614,72 @@ _git_snapshot_clear_from_snapshot() {
       [[ -z "${_drift_path}" ]] && continue
       drift_count=$((drift_count + 1))
     done <<< "${drift_paths}"
-    if [[ "${drift_count}" -gt 0 ]]; then
-      _git_snapshot_ui_warn "Submodule HEAD drift remains by design (no checkout/update in --clear):"
-      while IFS= read -r _drift_path; do
-        [[ -z "${_drift_path}" ]] && continue
-        _git_snapshot_ui_warn "  - ${_drift_path}"
-      done <<< "${drift_paths}"
-    fi
+  fi
+
+  GSN_CLEAR_TOTAL_REPOS="${total_repos}"
+  GSN_CLEAR_CLEARED_REPOS="${cleared_repos}"
+  GSN_CLEAR_FAILED_REPOS="${failed_repos}"
+  GSN_CLEAR_DRIFT_COUNT="${drift_count}"
+  GSN_CLEAR_DRIFT_PATHS="${drift_paths}"
+  if [[ "${failed_repos}" -gt 0 ]]; then
+    GSN_CLEAR_FAILURES="$(printf "%s\n" "${failures[@]}")"
+  fi
+
+  if [[ "${emit_human}" == "true" && "${drift_count}" -gt 0 ]]; then
+    _git_snapshot_ui_warn "Submodule HEAD drift remains by design (no checkout/update in ${operation_label}):"
+    while IFS= read -r _drift_path; do
+      [[ -z "${_drift_path}" ]] && continue
+      _git_snapshot_ui_warn "  - ${_drift_path}"
+    done <<< "${drift_paths}"
   fi
 
   if [[ "${failed_repos}" -gt 0 ]]; then
-    _git_snapshot_ui_err "Clear completed with failures (${failed_repos}/${total_repos} repos)."
-    for failure_reason in "${failures[@]}"; do
-      _git_snapshot_ui_err "  - ${failure_reason}"
-    done
+    if [[ "${emit_human}" == "true" ]]; then
+      _git_snapshot_ui_err "Clear completed with failures (${failed_repos}/${total_repos} repos)."
+      for failure_reason in "${failures[@]}"; do
+        _git_snapshot_ui_err "  - ${failure_reason}"
+      done
+    fi
     return 1
   fi
 
-  _git_snapshot_ui_info "Clear completed (${cleared_repos}/${total_repos} repos)."
+  if [[ "${emit_human}" == "true" ]]; then
+    _git_snapshot_ui_info "Clear completed (${cleared_repos}/${total_repos} repos)."
+  fi
   return 0
+}
+
+_git_snapshot_clear_from_snapshot() {
+  local root_repo="$1"
+  local snapshot_id="$2"
+  local snapshot_path
+  local rel_paths=""
+  local repo_id rel_path _head _status_hash
+
+  snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
+  _git_snapshot_store_assert_snapshot_exists "${root_repo}" "${snapshot_id}" || return 1
+
+  while IFS=$'\t' read -r repo_id rel_path _head _status_hash; do
+    [[ -z "${repo_id}" ]] && continue
+    rel_paths+="${rel_path}"$'\n'
+  done < <(_git_snapshot_store_read_repo_entries "${snapshot_path}")
+
+  _git_snapshot_clear_from_rel_paths "${root_repo}" "${rel_paths}" true "--clear"
+}
+
+_git_snapshot_clear_root_scope() {
+  local root_repo="$1"
+  local emit_human="${2:-true}"
+  local operation_label="${3:-reset-all}"
+  local rel_paths=""
+  local rel_path
+
+  while IFS= read -r rel_path; do
+    [[ -z "${rel_path}" ]] && continue
+    rel_paths+="${rel_path}"$'\n'
+  done < <(_git_snapshot_repo_collect_all_relative_paths "${root_repo}")
+
+  _git_snapshot_clear_from_rel_paths "${root_repo}" "${rel_paths}" "${emit_human}" "${operation_label}"
 }
 
 _git_snapshot_cmd_create() {
@@ -673,6 +747,108 @@ _git_snapshot_cmd_create() {
   fi
 
   printf "%s\n" "${snapshot_id}"
+  return "${clear_status}"
+}
+
+_git_snapshot_cmd_reset_all() {
+  local root_repo="$1"
+  shift
+  local porcelain="false"
+  local snapshot_choice="ask"
+  local should_create_snapshot="false"
+  local snapshot_created="false"
+  local snapshot_id=""
+  local clear_status=0
+  local summary_result="success"
+  local emit_clear_human="true"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --snapshot)
+        if [[ "${snapshot_choice}" == "no" ]]; then
+          _git_snapshot_ui_err "--snapshot and --no-snapshot cannot be used together"
+          return 1
+        fi
+        snapshot_choice="yes"
+        ;;
+      --no-snapshot)
+        if [[ "${snapshot_choice}" == "yes" ]]; then
+          _git_snapshot_ui_err "--snapshot and --no-snapshot cannot be used together"
+          return 1
+        fi
+        snapshot_choice="no"
+        ;;
+      --porcelain)
+        porcelain="true"
+        ;;
+      -*)
+        _git_snapshot_ui_err "Unknown option for reset-all: $1"
+        return 1
+        ;;
+      *)
+        _git_snapshot_ui_err "Unexpected argument for reset-all: $1"
+        return 1
+        ;;
+    esac
+    shift
+  done
+
+  if [[ "${snapshot_choice}" == "yes" ]]; then
+    should_create_snapshot="true"
+  elif [[ "${snapshot_choice}" == "no" ]]; then
+    should_create_snapshot="false"
+  else
+    if _git_snapshot_ui_choose_yes_no_default_no "Create auto snapshot before clear? [y/N]: " "Use --snapshot or --no-snapshot."; then
+      should_create_snapshot="true"
+    else
+      local choice_code=$?
+      if [[ "${choice_code}" -eq 1 ]]; then
+        should_create_snapshot="false"
+      else
+        return 1
+      fi
+    fi
+  fi
+
+  if [[ "${should_create_snapshot}" == "true" ]]; then
+    snapshot_id="$(_git_snapshot_create_internal "${root_repo}" "before-reset-all" false "" "auto")" || {
+      if [[ "${porcelain}" == "true" ]]; then
+        printf "reset_all_snapshot\tcreated=false\tsnapshot_id=\n"
+        printf "reset_all_summary\tresult=failed\tsnapshot_created=false\tsnapshot_id=\trepos_total=0\trepos_cleared=0\trepos_failed=0\texit_code=1\n"
+      fi
+      return 1
+    }
+    snapshot_created="true"
+    if [[ "${porcelain}" != "true" ]]; then
+      _git_snapshot_ui_info "Created auto snapshot ${snapshot_id} before reset-all."
+    fi
+  else
+    if [[ "${porcelain}" != "true" ]]; then
+      _git_snapshot_ui_info "Proceeding without pre-clear snapshot."
+    fi
+  fi
+
+  if [[ "${porcelain}" == "true" ]]; then
+    emit_clear_human="false"
+    printf "reset_all_snapshot\tcreated=%s\tsnapshot_id=%s\n" "${snapshot_created}" "${snapshot_id}"
+  fi
+
+  if ! _git_snapshot_clear_root_scope "${root_repo}" "${emit_clear_human}" "reset-all"; then
+    clear_status=1
+    summary_result="failed"
+  fi
+
+  if [[ "${porcelain}" == "true" ]]; then
+    printf "reset_all_summary\tresult=%s\tsnapshot_created=%s\tsnapshot_id=%s\trepos_total=%s\trepos_cleared=%s\trepos_failed=%s\texit_code=%s\n" \
+      "${summary_result}" \
+      "${snapshot_created}" \
+      "${snapshot_id}" \
+      "${GSN_CLEAR_TOTAL_REPOS:-0}" \
+      "${GSN_CLEAR_CLEARED_REPOS:-0}" \
+      "${GSN_CLEAR_FAILED_REPOS:-0}" \
+      "${clear_status}"
+  fi
+
   return "${clear_status}"
 }
 
@@ -1690,6 +1866,9 @@ git_snapshot_main() {
   case "${command}" in
     create)
       _git_snapshot_cmd_create "${root_repo}" "$@"
+      ;;
+    reset-all)
+      _git_snapshot_cmd_reset_all "${root_repo}" "$@"
       ;;
     rename)
       _git_snapshot_cmd_rename "${root_repo}" "$@"

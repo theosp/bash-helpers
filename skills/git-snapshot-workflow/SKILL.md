@@ -41,6 +41,10 @@ Follow this sequence and report each step.
   - `git-snapshot create <snapshot_id> --clear`
   - for non-interactive/automation contexts use `--yes` or `GIT_SNAPSHOT_CONFIRM_CLEAR=YES`
   - mention that clear is destructive for current unstaged/staged/untracked (non-ignored) state
+- If user wants a clean tree without choosing a snapshot id, use:
+  - `git-snapshot reset-all`
+  - use `--snapshot` or `--no-snapshot` in non-interactive/automation contexts
+  - `--snapshot` creates an auto snapshot (`origin=auto`) with `before-reset-all-` prefix
 
 2. Verify snapshot
 - Run: `git-snapshot inspect <snapshot_id>`
@@ -75,6 +79,7 @@ Follow this sequence and report each step.
 - `git-snapshot list` hides auto-generated snapshots by default and prints a hint when hidden rows exist.
 - Use `git-snapshot list --include-auto` when safety/internal snapshots must be visible.
 - `create --clear` has confirmation by default (`[y/N]`) unless `--yes` or `GIT_SNAPSHOT_CONFIRM_CLEAR=YES` is provided.
+- `reset-all` asks whether to create an auto snapshot only when neither `--snapshot` nor `--no-snapshot` is provided.
 
 ## Snapshot id policy
 

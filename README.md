@@ -32,6 +32,15 @@ Typical flow:
 2. handle urgent task on clean trees
 3. later resume with `git-snapshot restore <intent-id>`
 
+### Scenario C: Clear now with optional auto snapshot
+
+Use when you want a clean tree immediately and do not want to pick a snapshot
+id manually.
+
+Typical flow:
+1. `git-snapshot reset-all` (interactive snapshot choice)
+2. or `git-snapshot reset-all --snapshot` / `git-snapshot reset-all --no-snapshot`
+
 ### Quick Start
 
 ```bash
@@ -118,6 +127,28 @@ Creates a snapshot.
 - Snapshot id is still printed as final output line even on clear failure (for recovery).
 - `--clear` does **not** run submodule checkout/update alignment; submodule HEAD drift is warning-only.
 - Last output line is always the snapshot id.
+
+### `git-snapshot reset-all [--snapshot|--no-snapshot] [--porcelain]`
+
+Clears the current root-most repo scope in place:
+- `git reset --hard`
+- `git clean -fd`
+
+Flags:
+- `--snapshot`: create an auto snapshot first (origin=`auto`, id prefix `before-reset-all-`).
+- `--no-snapshot`: clear directly without creating a snapshot.
+- `--porcelain`: emit stable automation rows.
+
+Behavior:
+- `--snapshot` and `--no-snapshot` are mutually exclusive.
+- If neither flag is provided, prompt: `Create auto snapshot before clear? [y/N]:`
+- No second destructive confirmation is asked after this snapshot decision.
+- In non-interactive mode, pass `--snapshot` or `--no-snapshot`.
+- Clear remains best-effort and exits non-zero if any repo clear fails.
+
+Porcelain output:
+- `reset_all_snapshot\tcreated=<true|false>\tsnapshot_id=<id-or-empty>`
+- `reset_all_summary\tresult=<success|failed>\tsnapshot_created=<true|false>\tsnapshot_id=<id-or-empty>\trepos_total=<n>\trepos_cleared=<n>\trepos_failed=<n>\texit_code=<0|1>`
 
 ### `git-snapshot rename <old_snapshot_id> <new_snapshot_id> [--porcelain]`
 
@@ -251,6 +282,7 @@ Stable tab-delimited key/value lines for scripts.
 Examples:
 
 ```bash
+git-snapshot reset-all --snapshot --porcelain
 git-snapshot list --porcelain
 git-snapshot list --include-auto --porcelain
 git-snapshot inspect before-rebase --porcelain
@@ -310,6 +342,7 @@ export GIT_SNAPSHOT_CONFIRM_CLEAR=YES
 ```
 
 This bypasses interactive confirmation for `git-snapshot create --clear`.
+`git-snapshot reset-all` uses explicit `--snapshot` / `--no-snapshot` flags in non-interactive contexts.
 
 ## Troubleshooting
 

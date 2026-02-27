@@ -14,6 +14,24 @@
   - `--clear` is best-effort: reports failures per repo and exits non-zero if any clear failed.
   - Submodule checkout/update alignment is not performed during clear.
 
+- `git-snapshot reset-all [--snapshot|--no-snapshot] [--porcelain]`
+  - Clears root-most superproject + initialized recursive submodules in place:
+    - `git reset --hard`
+    - `git clean -fd`
+  - Snapshot choice:
+    - `--snapshot`: create pre-clear auto snapshot (`origin=auto`, `before-reset-all-...` id prefix)
+    - `--no-snapshot`: skip snapshot creation
+    - neither flag: ask `Create auto snapshot before clear? [y/N]:`
+    - both flags: usage error
+  - No second destructive confirmation after snapshot decision.
+  - Non-interactive mode requires `--snapshot` or `--no-snapshot`.
+  - Porcelain output:
+    - `reset_all_snapshot\tcreated=<true|false>\tsnapshot_id=<id-or-empty>`
+    - `reset_all_summary\tresult=<success|failed>\tsnapshot_created=<true|false>\tsnapshot_id=<id-or-empty>\trepos_total=<n>\trepos_cleared=<n>\trepos_failed=<n>\texit_code=<0|1>`
+  - Exit codes:
+    - `0`: clear completed for all repos
+    - `1`: usage/runtime error, snapshot-create failure, or any repo clear failure
+
 - `git-snapshot rename <old_snapshot_id> <new_snapshot_id> [--porcelain]`
   - Renames an existing snapshot id while preserving snapshot contents and creation time.
   - Fails when old id does not exist or new id already exists.
