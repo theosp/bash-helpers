@@ -40,9 +40,13 @@
 - `git-snapshot list [--include-auto] [--porcelain]`
   - Default output hides auto-generated internal snapshots (for example restore safety snapshots).
   - Human output: table (id, created, age, repo count).
+  - Human output includes `Root` column only when visible snapshots come from multiple root paths.
   - Default human list prints a hint with hidden auto-snapshot count when any are filtered.
   - `--include-auto` shows both user-created and auto-generated snapshots.
   - When `--include-auto` is used in human mode, table includes `Auto` column (`*` means auto-generated).
+  - Human list prints a registry note: snapshot registry is keyed by root repo folder name.
+    Different repos sharing the same folder name share one registry namespace.
+  - Human list order is newest-first by `created_at_epoch`, independent of root path.
   - Porcelain output: tab-delimited `snapshot` rows with key/value fields including `origin=<user|auto>`.
 
 - `git-snapshot inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--name-only|--stat|--diff] [--porcelain]`

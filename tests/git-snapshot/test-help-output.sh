@@ -19,6 +19,8 @@ assert_contains "git-snapshot create [snapshot_id] [--clear] [--yes]" "${help_ou
 assert_contains "git-snapshot reset-all [--snapshot|--no-snapshot] [--porcelain]" "${help_output}" "help should document reset-all command"
 assert_contains "git-snapshot rename <old_snapshot_id> <new_snapshot_id>" "${help_output}" "help should document rename command"
 assert_contains "git-snapshot list [--include-auto] [--porcelain]" "${help_output}" "help should document list include-auto flag"
+assert_contains "Root (snapshot source root path from metadata; shown only when multiple roots are present)" "${help_output}" "help should document conditional list root column"
+assert_contains "snapshot registry is keyed by root repo folder name" "${help_output}" "help should document shared registry note"
 assert_contains "Create auto snapshot before clear? [y/N]:" "${help_output}" "help should document reset-all snapshot-choice prompt"
 assert_contains "Default list view hides auto-generated internal snapshots." "${help_output}" "help should explain default list filtering"
 assert_contains "git-snapshot inspect <snapshot_id>" "${help_output}" "help should document inspect command"

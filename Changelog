@@ -1,3 +1,21 @@
+v1.0.21 (2026-02-27)
+
+* Document and surface shared snapshot-registry behavior for same-name repos:
+  - snapshot registry remains keyed by root repo folder name
+  - human `list` output always prints an explicit note about this behavior.
+
+* Improve `git-snapshot list` root visibility ergonomics:
+  - show `Root` column only when visible snapshots come from multiple root paths
+  - keep default single-root lists compact (no redundant root column).
+
+* Keep list ordering newest-first across all visible snapshots:
+  - explicit sort by `created_at_epoch` descending regardless of snapshot root.
+
+* Update help/docs/skill contract and add regression coverage for:
+  - conditional root-column rendering
+  - shared-name multi-root registry listing
+  - newest-first ordering across roots.
+
 v1.0.20 (2026-02-27)
 
 * Add `git-snapshot reset-all` for clear-in-place workflows with optional

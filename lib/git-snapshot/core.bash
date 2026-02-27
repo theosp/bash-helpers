@@ -96,7 +96,11 @@ list
   - Created (local timezone)
   - Age
   - Repos
+  - Root (snapshot source root path from metadata; shown only when multiple roots are present)
   - Auto (`*` means auto-generated; shown only when `--include-auto` is used)
+  Note:
+  - snapshot registry is keyed by root repo folder name
+  - repositories sharing the same folder name share one snapshot registry
   Porcelain output:
   - one `snapshot\t...` line per snapshot
   - fields: id, created_at_epoch, repo_count, root_repo, origin
@@ -958,6 +962,8 @@ _git_snapshot_cmd_list() {
   fi
 
   local rows=""
+  local show_root_column="false"
+  local distinct_root_count=0
   while IFS= read -r snapshot_id; do
     [[ -z "${snapshot_id}" ]] && continue
     snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
@@ -967,28 +973,43 @@ _git_snapshot_cmd_list() {
       continue
     fi
     visible_count=$((visible_count + 1))
-    rows+="${CREATED_AT_EPOCH}"$'\t'"${snapshot_id}"$'\t'"${REPO_COUNT}"$'\t'"${SNAPSHOT_ORIGIN}"$'\n'
+    rows+="${CREATED_AT_EPOCH}"$'\t'"${snapshot_id}"$'\t'"${REPO_COUNT}"$'\t'"${SNAPSHOT_ORIGIN}"$'\t'"${ROOT_REPO}"$'\n'
   done < <(_git_snapshot_store_list_snapshot_ids "${root_repo}")
+
+  distinct_root_count="$(printf "%s" "${rows}" | awk -F'\t' 'NF >= 5 && $5 != "" {print $5}' | sort -u | awk 'END {print NR + 0}')"
+  if [[ "${distinct_root_count}" -gt 1 ]]; then
+    show_root_column="true"
+  fi
 
   if [[ "${visible_count}" -eq 0 ]]; then
     if [[ "${include_auto}" == "true" ]]; then
       printf "No snapshots found (%s)\n" "${root_repo}"
+      printf "Note: snapshot registry is keyed by root repo folder name. Repositories sharing the same folder name share this registry.\n"
       return 0
     fi
     printf "No user-created snapshots found (%s)\n" "${root_repo}"
     if [[ "${hidden_auto_count}" -gt 0 ]]; then
       printf "Hint: %s auto-generated snapshot(s) hidden. Run: git-snapshot list --include-auto\n" "${hidden_auto_count}"
     fi
+    printf "Note: snapshot registry is keyed by root repo folder name. Repositories sharing the same folder name share this registry.\n"
     return 0
   fi
 
   printf "Snapshots (%s)\n" "${root_repo}"
   if [[ "${include_auto}" == "true" ]]; then
-    printf "%-28s %-19s %-6s %-5s %-4s\n" "ID" "Created" "Age" "Repos" "Auto"
+    if [[ "${show_root_column}" == "true" ]]; then
+      printf "%-28s %-19s %-6s %-5s %-48s %-4s\n" "ID" "Created" "Age" "Repos" "Root" "Auto"
+    else
+      printf "%-28s %-19s %-6s %-5s %-4s\n" "ID" "Created" "Age" "Repos" "Auto"
+    fi
   else
-    printf "%-28s %-19s %-6s %-5s\n" "ID" "Created" "Age" "Repos"
+    if [[ "${show_root_column}" == "true" ]]; then
+      printf "%-28s %-19s %-6s %-5s %-48s\n" "ID" "Created" "Age" "Repos" "Root"
+    else
+      printf "%-28s %-19s %-6s %-5s\n" "ID" "Created" "Age" "Repos"
+    fi
   fi
-  while IFS=$'\t' read -r epoch snapshot_id repo_count snapshot_origin; do
+  while IFS=$'\t' read -r epoch snapshot_id repo_count snapshot_origin snapshot_root_repo; do
     [[ -z "${snapshot_id}" ]] && continue
     local created age
     created="$(_git_snapshot_inspect_format_epoch_local "${epoch}")"
@@ -998,17 +1019,26 @@ _git_snapshot_cmd_list() {
       if [[ "${snapshot_origin}" == "auto" ]]; then
         auto_marker="*"
       fi
-      printf "%-28s %-19s %-6s %-5s %-4s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}" "${auto_marker}"
+      if [[ "${show_root_column}" == "true" ]]; then
+        printf "%-28s %-19s %-6s %-5s %-48s %-4s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}" "${snapshot_root_repo}" "${auto_marker}"
+      else
+        printf "%-28s %-19s %-6s %-5s %-4s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}" "${auto_marker}"
+      fi
     else
-      printf "%-28s %-19s %-6s %-5s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}"
+      if [[ "${show_root_column}" == "true" ]]; then
+        printf "%-28s %-19s %-6s %-5s %-48s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}" "${snapshot_root_repo}"
+      else
+        printf "%-28s %-19s %-6s %-5s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}"
+      fi
     fi
-  done < <(printf "%s" "${rows}" | sort -rn)
+  done < <(printf "%s" "${rows}" | sort -t$'\t' -k1,1nr)
 
   if [[ "${include_auto}" == "true" ]]; then
     printf "* = auto-generated snapshot\n"
   elif [[ "${hidden_auto_count}" -gt 0 ]]; then
     printf "Hint: %s auto-generated snapshot(s) hidden. Run: git-snapshot list --include-auto\n" "${hidden_auto_count}"
   fi
+  printf "Note: snapshot registry is keyed by root repo folder name. Repositories sharing the same folder name share this registry.\n"
 }
 
 _git_snapshot_diff_render_human_category() {

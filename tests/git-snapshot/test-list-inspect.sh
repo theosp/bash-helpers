@@ -20,6 +20,8 @@ list_output="$(cd "${root_repo}" && git_snapshot_test_cmd list)"
 assert_contains "${snapshot_id}" "${list_output}" "list should include snapshot id"
 assert_contains "Snapshots (" "${list_output}" "list should include human header"
 assert_contains "Repos" "${list_output}" "list should include repo count column"
+assert_not_contains "Repos Root" "${list_output}" "single-root list should not include root column"
+assert_contains "Note: snapshot registry is keyed by root repo folder name." "${list_output}" "list should include shared registry note"
 
 inspect_output="$(cd "${root_repo}" && git_snapshot_test_cmd inspect "${snapshot_id}")"
 assert_contains "Snapshot inspect: ${snapshot_id}" "${inspect_output}" "inspect should include human snapshot header"
