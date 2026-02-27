@@ -44,7 +44,7 @@ Follow this sequence and report each step.
 - If user wants a clean tree without choosing a snapshot id, use:
   - `git-snapshot reset-all`
   - use `--snapshot` or `--no-snapshot` in non-interactive/automation contexts
-  - `--snapshot` creates an auto snapshot (`origin=auto`) with `before-reset-all-` prefix
+  - `--snapshot` creates an auto snapshot (`origin=auto`) with `pre-reset-` prefix
 
 2. Verify snapshot
 - Run: `git-snapshot inspect <snapshot_id>`

@@ -20,7 +20,7 @@ reset_code=$?
 set -e
 
 assert_exit_code 1 "${reset_code}" "reset-all should fail in non-interactive mode when snapshot choice is omitted"
-assert_contains "Choice required ([y/N]) but stdin is not interactive." "${reset_output}" "error should explain non-interactive snapshot choice requirement"
+assert_contains "Choice required ([Y/n]) but stdin is not interactive." "${reset_output}" "error should explain non-interactive snapshot choice requirement"
 assert_contains "Use --snapshot or --no-snapshot." "${reset_output}" "error should guide automation-friendly flags"
 
 snapshot_root="$(git_snapshot_test_snapshot_root_for_repo "${root_repo}")"

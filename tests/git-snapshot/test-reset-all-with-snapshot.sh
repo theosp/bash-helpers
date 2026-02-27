@@ -35,7 +35,7 @@ assert_contains "Clear completed" "${reset_output}" "reset-all should report cle
 
 auto_snapshot_id="$(printf "%s\n" "${reset_output}" | sed -n 's/.*Created auto snapshot \([^[:space:]]*\) before reset-all\./\1/p' | tail -n 1)"
 assert_non_empty "${auto_snapshot_id}" "reset-all --snapshot should print created auto snapshot id"
-assert_contains "before-reset-all-" "${auto_snapshot_id}" "reset-all auto snapshot id should use before-reset-all prefix"
+assert_contains "pre-reset-" "${auto_snapshot_id}" "reset-all auto snapshot id should use pre-reset prefix"
 
 snapshot_root="$(git_snapshot_test_snapshot_root_for_repo "${root_repo}")"
 assert_file_exists "${snapshot_root}/${auto_snapshot_id}/meta.env" "auto snapshot metadata should exist"

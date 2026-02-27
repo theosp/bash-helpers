@@ -1,3 +1,16 @@
+v1.0.24 (2026-02-27)
+
+* Improve `git-snapshot reset-all` defaults and naming:
+  - change interactive snapshot-choice prompt default to yes (`[Y/n]`)
+  - rename auto snapshot id prefix from `before-reset-all-*` to `pre-reset-*`.
+
+* Improve `git-snapshot list` readability:
+  - widen the `ID` column for long snapshot names
+  - print a blank line before the hidden-auto hint message.
+
+* Update help/docs/skill contract text and tests for the new reset-all
+  prompt/default and auto snapshot prefix.
+
 v1.0.23 (2026-02-27)
 
 * Improve `git-snapshot list` readability:

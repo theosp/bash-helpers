@@ -135,13 +135,13 @@ Clears the current root-most repo scope in place:
 - `git clean -fd`
 
 Flags:
-- `--snapshot`: create an auto snapshot first (origin=`auto`, id prefix `before-reset-all-`).
+- `--snapshot`: create an auto snapshot first (origin=`auto`, id prefix `pre-reset-`).
 - `--no-snapshot`: clear directly without creating a snapshot.
 - `--porcelain`: emit stable automation rows.
 
 Behavior:
 - `--snapshot` and `--no-snapshot` are mutually exclusive.
-- If neither flag is provided, prompt: `Create auto snapshot before clear? [y/N]:`
+- If neither flag is provided, prompt: `Create auto snapshot before clear? [Y/n]:`
 - No second destructive confirmation is asked after this snapshot decision.
 - In non-interactive mode, pass `--snapshot` or `--no-snapshot`.
 - Clear remains best-effort and exits non-zero if any repo clear fails.

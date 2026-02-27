@@ -65,12 +65,12 @@ reset-all [--snapshot|--no-snapshot] [--porcelain]
   Snapshot choice policy:
   - `--snapshot`    : create auto snapshot before clear
   - `--no-snapshot` : clear without pre-clear snapshot
-  - neither flag    : ask `Create auto snapshot before clear? [y/N]:`
+  - neither flag    : ask `Create auto snapshot before clear? [Y/n]:`
   - both flags      : usage error
   Notes:
   - no extra destructive confirmation is asked after snapshot decision
   - non-interactive mode requires `--snapshot` or `--no-snapshot`
-  - auto snapshots use label prefix `before-reset-all-` and origin `auto`
+  - auto snapshots use label prefix `pre-reset-` and origin `auto`
   - submodule HEAD drift is warning-only and does not fail clear
   - clear is best-effort; failures are reported and command exits non-zero
   Porcelain output:
@@ -802,7 +802,7 @@ _git_snapshot_cmd_reset_all() {
   elif [[ "${snapshot_choice}" == "no" ]]; then
     should_create_snapshot="false"
   else
-    if _git_snapshot_ui_choose_yes_no_default_no "Create auto snapshot before clear? [y/N]: " "Use --snapshot or --no-snapshot."; then
+    if _git_snapshot_ui_choose_yes_no_default_yes "Create auto snapshot before clear? [Y/n]: " "Use --snapshot or --no-snapshot."; then
       should_create_snapshot="true"
     else
       local choice_code=$?
@@ -815,7 +815,7 @@ _git_snapshot_cmd_reset_all() {
   fi
 
   if [[ "${should_create_snapshot}" == "true" ]]; then
-    snapshot_id="$(_git_snapshot_create_internal "${root_repo}" "before-reset-all" false "" "auto")" || {
+    snapshot_id="$(_git_snapshot_create_internal "${root_repo}" "pre-reset" false "" "auto")" || {
       if [[ "${porcelain}" == "true" ]]; then
         printf "reset_all_snapshot\tcreated=false\tsnapshot_id=\n"
         printf "reset_all_summary\tresult=failed\tsnapshot_created=false\tsnapshot_id=\trepos_total=0\trepos_cleared=0\trepos_failed=0\texit_code=1\n"
@@ -998,6 +998,7 @@ _git_snapshot_cmd_list() {
     fi
     printf "No user-created snapshots found (%s)\n" "${root_repo}"
     if [[ "${hidden_auto_count}" -gt 0 ]]; then
+      printf "\n"
       printf "Hint: %s auto-generated snapshot(s) hidden. Run: git-snapshot list --include-auto\n" "${hidden_auto_count}"
     fi
     printf "\n"
@@ -1008,15 +1009,15 @@ _git_snapshot_cmd_list() {
   printf "Snapshots (%s)\n" "${root_repo}"
   if [[ "${include_auto}" == "true" ]]; then
     if [[ "${show_root_column}" == "true" ]]; then
-      printf "%-28s %-19s %-6s %-7s %-48s %-4s\n" "ID" "Created" "Age" "Repos" "Root" "Auto"
+      printf "%-36s %-19s %-6s %-7s %-48s %-4s\n" "ID" "Created" "Age" "Repos" "Root" "Auto"
     else
-      printf "%-28s %-19s %-6s %-7s %-4s\n" "ID" "Created" "Age" "Repos" "Auto"
+      printf "%-36s %-19s %-6s %-7s %-4s\n" "ID" "Created" "Age" "Repos" "Auto"
     fi
   else
     if [[ "${show_root_column}" == "true" ]]; then
-      printf "%-28s %-19s %-6s %-7s %-48s\n" "ID" "Created" "Age" "Repos" "Root"
+      printf "%-36s %-19s %-6s %-7s %-48s\n" "ID" "Created" "Age" "Repos" "Root"
     else
-      printf "%-28s %-19s %-6s %-7s\n" "ID" "Created" "Age" "Repos"
+      printf "%-36s %-19s %-6s %-7s\n" "ID" "Created" "Age" "Repos"
     fi
   fi
   while IFS=$'\t' read -r epoch snapshot_id repo_count snapshot_origin snapshot_root_repo; do
@@ -1030,15 +1031,15 @@ _git_snapshot_cmd_list() {
         auto_marker="*"
       fi
       if [[ "${show_root_column}" == "true" ]]; then
-        printf "%-28s %-19s %-6s %-7s %-48s %-4s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}" "${snapshot_root_repo}" "${auto_marker}"
+        printf "%-36s %-19s %-6s %-7s %-48s %-4s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}" "${snapshot_root_repo}" "${auto_marker}"
       else
-        printf "%-28s %-19s %-6s %-7s %-4s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}" "${auto_marker}"
+        printf "%-36s %-19s %-6s %-7s %-4s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}" "${auto_marker}"
       fi
     else
       if [[ "${show_root_column}" == "true" ]]; then
-        printf "%-28s %-19s %-6s %-7s %-48s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}" "${snapshot_root_repo}"
+        printf "%-36s %-19s %-6s %-7s %-48s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}" "${snapshot_root_repo}"
       else
-        printf "%-28s %-19s %-6s %-7s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}"
+        printf "%-36s %-19s %-6s %-7s\n" "${snapshot_id}" "${created}" "${age}" "${repo_count}"
       fi
     fi
   done < <(printf "%s" "${rows}" | sort -t$'\t' -k1,1nr)
@@ -1046,6 +1047,7 @@ _git_snapshot_cmd_list() {
   if [[ "${include_auto}" == "true" ]]; then
     printf "* = auto-generated snapshot\n"
   elif [[ "${hidden_auto_count}" -gt 0 ]]; then
+    printf "\n"
     printf "Hint: %s auto-generated snapshot(s) hidden. Run: git-snapshot list --include-auto\n" "${hidden_auto_count}"
   fi
   printf "\n"

@@ -108,3 +108,30 @@ _git_snapshot_ui_choose_yes_no_default_no() {
       ;;
   esac
 }
+
+_git_snapshot_ui_choose_yes_no_default_yes() {
+  local prompt="$1"
+  local non_interactive_guidance="$2"
+
+  if [[ ! -t 0 ]]; then
+    _git_snapshot_ui_err "Choice required ([Y/n]) but stdin is not interactive. ${non_interactive_guidance}"
+    return 2
+  fi
+
+  local typed=""
+  printf "%s" "${prompt}" >&2
+  IFS= read -r typed
+
+  case "${typed}" in
+    ""|y|Y|yes|YES)
+      return 0
+      ;;
+    n|N|no|NO)
+      return 1
+      ;;
+    *)
+      _git_snapshot_ui_err "Invalid response. Expected y/yes or n/no."
+      return 2
+      ;;
+  esac
+}

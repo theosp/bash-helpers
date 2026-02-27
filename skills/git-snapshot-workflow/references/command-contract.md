@@ -19,9 +19,9 @@
     - `git reset --hard`
     - `git clean -fd`
   - Snapshot choice:
-    - `--snapshot`: create pre-clear auto snapshot (`origin=auto`, `before-reset-all-...` id prefix)
+    - `--snapshot`: create pre-clear auto snapshot (`origin=auto`, `pre-reset-...` id prefix)
     - `--no-snapshot`: skip snapshot creation
-    - neither flag: ask `Create auto snapshot before clear? [y/N]:`
+    - neither flag: ask `Create auto snapshot before clear? [Y/n]:`
     - both flags: usage error
   - No second destructive confirmation after snapshot decision.
   - Non-interactive mode requires `--snapshot` or `--no-snapshot`.
