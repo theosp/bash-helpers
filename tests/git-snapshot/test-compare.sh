@@ -20,7 +20,10 @@ compare_clean_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${ba
 assert_contains "Snapshot compare: ${baseline_snapshot_id}" "${compare_clean_output}" "compare should include heading"
 assert_contains "Selected snapshot mode: explicit" "${compare_clean_output}" "explicit compare should disclose target mode"
 assert_contains "Snapshot origin: user" "${compare_clean_output}" "compare should disclose target origin"
+assert_contains "Repos checked: 3 | repos with file differences: 0 | repos with head differences: 0" "${compare_clean_output}" "clean compare summary should show zero differences"
 assert_contains "Compare: no differences within snapshot scope." "${compare_clean_output}" "clean compare should report no differences"
+assert_not_contains "Warnings:" "${compare_clean_output}" "clean compare should not print warnings section"
+assert_not_contains "Follow-up commands for deeper details:" "${compare_clean_output}" "clean compare should not print follow-up guidance"
 
 printf "compare-mismatch\n" >> "${root_repo}/root.txt"
 git -C "${root_repo}" add root.txt
@@ -31,8 +34,16 @@ compare_mismatch_code=$?
 set -e
 assert_exit_code 0 "${compare_mismatch_code}" "diagnostic compare should not fail when differences exist"
 assert_contains "Differences:" "${compare_mismatch_output}" "compare should report differences section"
-assert_contains "staged patch differs" "${compare_mismatch_output}" "compare should include staged mismatch detail"
-assert_contains "git-snapshot compare ${baseline_snapshot_id} --repo . --assert-equal" "${compare_mismatch_output}" "compare follow-up should suggest assert mode"
+assert_contains "Repo: super" "${compare_mismatch_output}" "compare should include repo heading for differences"
+assert_contains "File: root.txt" "${compare_mismatch_output}" "compare should include changed file"
+assert_contains "[staged] snapshot_state=false current_state=true" "${compare_mismatch_output}" "compare should include state-aware staged transition detail"
+assert_contains "state transition: true" "${compare_mismatch_output}" "clean baseline to staged change should be a transition"
+assert_contains "diff kind: state-transition-only" "${compare_mismatch_output}" "compare should classify staged transition mismatch"
+assert_not_contains "Follow-up commands for deeper details:" "${compare_mismatch_output}" "compare should not print follow-up guidance"
+assert_not_contains "Warnings:" "${compare_mismatch_output}" "compare should not print warnings section"
+
+compare_mismatch_porcelain_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${baseline_snapshot_id}" --repo . --porcelain)"
+assert_contains $'compare_file\tsnapshot_id='"${baseline_snapshot_id}"$'\trepo=.\tfile=root.txt\tsnapshot_states=none\tcurrent_states=staged\tstate_transition=true\thas_diff=true\tdiff_kind=state-transition-only' "${compare_mismatch_porcelain_output}" "compare porcelain should classify transition-only mismatch"
 
 set +e
 compare_assert_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${baseline_snapshot_id}" --repo . --assert-equal 2>&1)"
@@ -40,14 +51,39 @@ compare_assert_code=$?
 set -e
 assert_exit_code 3 "${compare_assert_code}" "assert-equal compare should fail on differences"
 assert_contains "Differences:" "${compare_assert_output}" "assert compare should still report differences"
-assert_contains "staged patch differs" "${compare_assert_output}" "assert compare should include mismatch detail"
+assert_contains "File: root.txt" "${compare_assert_output}" "assert compare should include file detail"
 
 git -C "${root_repo}" reset --hard >/dev/null
 
 compare_porcelain_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${baseline_snapshot_id}" --repo . --porcelain)"
 assert_contains $'compare_target\tselected_snapshot_id='"${baseline_snapshot_id}"$'\tselection_mode=explicit\tsnapshot_origin=user' "${compare_porcelain_output}" "compare porcelain should include target row"
-assert_contains $'compare\tsnapshot_id='"${baseline_snapshot_id}"$'\trepo=.\thead=same\tstaged=match\tunstaged=match\tuntracked=match\tstrict_head=false' "${compare_porcelain_output}" "compare porcelain should include per-repo row"
-assert_contains $'compare_summary\tsnapshot_id='"${baseline_snapshot_id}"$'\trepos_checked=1\tmismatches=0\twarnings=0\tstrict_head=false' "${compare_porcelain_output}" "compare porcelain should include summary row"
+assert_contains $'compare\tsnapshot_id='"${baseline_snapshot_id}"$'\trepo=.\thead_state=same\thead_relation=same\thead_ahead=0\thead_behind=0\tfile_diff=false\tchanged_files=0' "${compare_porcelain_output}" "compare porcelain should include per-repo row"
+assert_contains $'compare_summary\tsnapshot_id='"${baseline_snapshot_id}"$'\trepos_checked=1\tdiff_repos=0\thead_diff_repos=0\tdiff_files_total=0' "${compare_porcelain_output}" "compare porcelain should include summary row"
+assert_contains $'compare_summary\tsnapshot_id='"${baseline_snapshot_id}"$'\trepos_checked=1\tdiff_repos=0\thead_diff_repos=0\tdiff_files_total=0\tcontract_version=2' "${compare_porcelain_output}" "compare summary row should expose contract version"
+assert_not_contains $'strict_head=' "${compare_porcelain_output}" "compare porcelain should not include strict-head fields"
+
+printf "head-shift\n" >> "${root_repo}/root.txt"
+git -C "${root_repo}" add root.txt
+git -C "${root_repo}" commit -m "head shift for compare tests" >/dev/null
+
+set +e
+compare_head_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${baseline_snapshot_id}" --repo . 2>&1)"
+compare_head_code=$?
+set -e
+assert_exit_code 0 "${compare_head_code}" "head differences alone should not fail diagnostic compare"
+assert_contains "Head differences:" "${compare_head_output}" "compare should render dedicated head differences section"
+assert_contains "relation=current-ahead" "${compare_head_output}" "head differences should include relation"
+assert_contains "ahead=1" "${compare_head_output}" "head differences should include ahead count"
+assert_contains "Compare: no differences within snapshot scope." "${compare_head_output}" "compare should still pass when file state matches"
+
+set +e
+compare_head_strict_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${baseline_snapshot_id}" --repo . --strict-head 2>&1)"
+compare_head_strict_code=$?
+set -e
+assert_exit_code 0 "${compare_head_strict_code}" "strict-head compatibility mode should not fail compare on head-only differences"
+assert_contains "Option --strict-head is deprecated and currently a compatibility no-op." "${compare_head_strict_output}" "strict-head compare should emit compatibility warning"
+assert_contains "Head differences:" "${compare_head_strict_output}" "strict-head compare should still print head differences section"
+assert_contains "Compare: no differences within snapshot scope." "${compare_head_strict_output}" "strict-head compare should keep informational head policy"
 
 old_user_output="$(cd "${root_repo}" && git_snapshot_test_cmd create user-old)"
 old_user_snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${old_user_output}")"

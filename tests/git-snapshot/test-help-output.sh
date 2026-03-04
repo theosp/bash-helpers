@@ -32,8 +32,10 @@ assert_contains "git-snapshot compare [snapshot_id]" "${help_output}" "help shou
 assert_contains "git-snapshot verify [snapshot_id]" "${help_output}" "help should document verify command"
 assert_contains "git-snapshot restore <snapshot_id> [--on-conflict <reject|rollback>] [--porcelain]" "${help_output}" "help should document restore conflict/porcelain flags"
 assert_contains "default (\`--on-conflict reject\`)" "${help_output}" "help should explain default reject restore mode"
-assert_contains "HEAD mismatch is warning-only" "${help_output}" "help should explain default verify head policy"
+assert_contains "HEAD differences are informational only" "${help_output}" "help should explain head-difference policy"
 assert_contains "VERIFY IS A WRAPPER OVER COMPARE" "${help_output}" "help should explain verify wrapper semantics"
+assert_contains "--strict-head" "${help_output}" "help should include strict-head compatibility option"
+assert_contains "deprecated compatibility no-op" "${help_output}" "help should disclose strict-head deprecation behavior"
 assert_contains "Troubleshooting" "${help_output}" "help should include troubleshooting guidance"
 
 set +e

@@ -53,8 +53,7 @@ Follow this sequence and report each step.
   - canonical snapshot-vs-current delta engine
   - default compare mode is diagnostic (exit `0` even when differences exist)
   - use `--assert-equal` to fail on differences (exit `3`)
-  - default mode treats HEAD mismatch as warning-only
-  - use `--strict-head` when commit identity must also match snapshot HEAD
+  - HEAD differences are informational and shown in a dedicated section
 - `git-snapshot verify` is a wrapper over compare (`compare --assert-equal`)
 
 3. Restore snapshot (only on explicit user restore intent)

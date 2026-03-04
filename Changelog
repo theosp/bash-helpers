@@ -21,7 +21,15 @@ v1.0.26 (2026-03-04)
 * Add compare porcelain schema:
   - `compare_target`
   - `compare`
+  - `compare_file`
   - `compare_summary`
+
+* Keep `--strict-head` as deprecated compatibility no-op for compare/verify:
+  - the flag is accepted and warns
+  - head differences remain informational-only.
+
+* Add porcelain summary contract version marker:
+  - `compare_summary` and `verify_summary` now include `contract_version=2`.
 
 * Update help/README/skill contract docs to explicitly state:
   - verify is a wrapper over compare

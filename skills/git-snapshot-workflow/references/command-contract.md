@@ -75,23 +75,40 @@
     - order: `created_at_epoch` descending, tie-break by snapshot id lexical descending
     - if no user-created snapshot exists: fail clearly
   - Human output always discloses selected snapshot id/mode/origin/root/current-root.
-  - Default head policy: HEAD mismatch is warning-only.
-  - `--strict-head`: HEAD mismatch becomes mismatch/failure.
+  - Head differences are informational and shown in a dedicated section.
+  - `--strict-head` is accepted as a deprecated compatibility no-op.
+  - File mismatch decisions are based on captured staged/unstaged/untracked parity.
   - Default compare mode is diagnostic:
     - exit `0` on successful execution even if differences exist
   - `--assert-equal` enables verification mode:
     - differences return exit `3`
+  - Porcelain rows:
+    - `compare_target`: selected snapshot metadata (`selected_snapshot_id`,
+      `selection_mode`, `snapshot_origin`, `snapshot_root`, `current_root`, `assert_equal`)
+    - `compare`: repo-level status (`head_state`, `head_relation`,
+      `head_ahead`, `head_behind`, `file_diff`, `changed_files`)
+    - `compare_file`: file-level matrix (`snapshot_states`, `current_states`,
+      `state_transition`, `has_diff`, `diff_kind`)
+      where `diff_kind` is one of:
+      - `none`
+      - `state-transition-only`
+      - `content-only`
+      - `state+content`
+    - `compare_summary`: totals (`repos_checked`, `diff_repos`,
+      `head_diff_repos`, `diff_files_total`) + `contract_version=2`
   - Exit codes:
     - `0`: compare ran successfully (diagnostic mode, with or without differences)
     - `3`: differences found with `--assert-equal`
     - `1`: usage/runtime error
 
-- `git-snapshot verify [snapshot_id] [--repo <rel_path>] [--strict-head] [--porcelain]`
+  - `git-snapshot verify [snapshot_id] [--repo <rel_path>] [--strict-head] [--porcelain]`
   - VERIFY IS A WRAPPER OVER COMPARE (equivalent to `compare --assert-equal`).
+  - `--strict-head` is accepted as a deprecated compatibility no-op.
   - Uses same optional snapshot target resolver when `snapshot_id` is omitted.
-  - Keeps verify-oriented porcelain rows (`verify`, `verify_summary`).
+  - Keeps verify-oriented porcelain rows (`verify`, `verify_file`, `verify_summary`)
+    with the same field semantics as compare rows.
   - Exit codes:
-    - `0`: verified (or warnings only in default mode)
+    - `0`: verified
     - `3`: mismatches found
     - `1`: usage/runtime error
 

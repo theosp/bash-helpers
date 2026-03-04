@@ -99,13 +99,9 @@ Both compare and verify inspect snapshot-captured working-set equivalence:
 - unstaged patch bytes
 - untracked non-ignored file set+content
 
-By default, HEAD mismatch is warning-only. This is intentional for long-running
-workflows where you snapshot, continue unrelated work (including new commits),
-then later restore/check parity of the captured working set.
-
-Use `--strict-head` when commit identity itself is part of the requirement
-(for example rebase-sensitive checkpoints or when you must ensure the exact same
-commit baseline before proceeding).
+HEAD differences are informational only and printed in a dedicated
+`Head differences` section. Compare/verify mismatch outcomes are based only on
+file-state differences.
 
 When `snapshot_id` is omitted for compare/verify:
 - the tool selects the latest `origin=user` snapshot from the entire shared-folder registry
@@ -239,8 +235,9 @@ Exit codes:
 Compares current state against snapshot-captured state.
 
 Default behavior is diagnostic:
-- reports differences/warnings
+- reports differences and head-difference information
 - exits `0` on successful execution even when differences are found
+- `--strict-head` is accepted as a deprecated compatibility no-op (head differences remain informational)
 
 With `--assert-equal`:
 - differences become failure (`exit 3`)
@@ -254,6 +251,18 @@ Human output always discloses:
 - selection mode (`explicit` / `latest-user-default`)
 - snapshot origin and snapshot root
 - current root
+- repo summary with:
+  - repos with file differences
+  - repos with head differences
+- dedicated sections:
+  - `Head differences` (informational)
+  - `Differences` (repo -> file -> full inline state-aware diffs)
+- in `--porcelain`, `compare_file` rows include `diff_kind`:
+  - `none`
+  - `state-transition-only`
+  - `content-only`
+  - `state+content`
+- `compare_summary` includes `contract_version=2`
 
 ### `git-snapshot verify [snapshot_id] [--repo <rel_path>] [--strict-head] [--porcelain]`
 
@@ -265,18 +274,17 @@ Default checks:
 - untracked non-ignored set+content match
 
 Head policy:
-- default: HEAD mismatch is warning-only (exit remains success if no other mismatches)
-- `--strict-head`: HEAD mismatch is treated as mismatch (exit code `3`)
-
-Why default is non-strict:
-- lets you continue normal development after snapshot creation (including commits)
-  and still verify/restore against captured working-set data later.
-
-Use `--strict-head` when:
-- the exact commit baseline is part of safety requirements, not only file-state parity.
+- HEAD differences are informational and do not affect verify exit status.
+- `--strict-head` is accepted as a deprecated compatibility no-op.
+- in `--porcelain`, `verify_file` rows include `diff_kind`:
+  - `none`
+  - `state-transition-only`
+  - `content-only`
+  - `state+content`
+- `verify_summary` includes `contract_version=2`
 
 Exit codes:
-- `0`: verified (or warnings only in default mode)
+- `0`: verified
 - `3`: mismatches detected
 - `1`: usage/runtime error
 
@@ -394,10 +402,28 @@ This bypasses interactive confirmation for `git-snapshot create --clear`.
 
 ## Tests
 
-Run all bash-helpers tests:
+Run all git-snapshot tests (CI entrypoint):
 
 ```bash
 ./tests/run-tests.sh
+```
+
+Equivalent direct runner:
+
+```bash
+./tests/git-snapshot/run-all.sh
+```
+
+Optional performance smoke benchmark:
+
+```bash
+GIT_SNAPSHOT_INCLUDE_PERF_SMOKE=true ./tests/run-tests.sh
+```
+
+Optional threshold override for benchmark mode:
+
+```bash
+GIT_SNAPSHOT_INCLUDE_PERF_SMOKE=true GIT_SNAPSHOT_PERF_MAX_SECONDS=30 ./tests/run-tests.sh
 ```
 
 Test suite guarantees:
