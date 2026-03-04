@@ -32,7 +32,8 @@ Usage
   git-snapshot list [--include-auto] [--porcelain]
   git-snapshot inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--name-only|--stat|--diff] [--porcelain]
   git-snapshot restore-check <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]
-  git-snapshot verify <snapshot_id> [--repo <rel_path>] [--strict-head] [--porcelain]
+  git-snapshot compare [snapshot_id] [--repo <rel_path>] [--strict-head] [--assert-equal] [--porcelain]
+  git-snapshot verify [snapshot_id] [--repo <rel_path>] [--strict-head] [--porcelain]
   git-snapshot restore <snapshot_id> [--on-conflict <reject|rollback>] [--porcelain]
   git-snapshot delete <snapshot_id>
   git-snapshot debug-dirty
@@ -141,20 +142,52 @@ restore-check
   - 3 : compatibility issues found
   - 1 : usage/runtime error
 
-verify
-  Verifies whether current working-set state matches what the snapshot captured.
-  Default verification scope:
+compare [snapshot_id] [--repo <rel_path>] [--strict-head] [--assert-equal] [--porcelain]
+  Compares current working-set state against snapshot-captured state.
+  Default compare scope:
   - staged patch bytes
   - unstaged patch bytes
   - untracked non-ignored file set+content
-  Default head policy:
-  - HEAD mismatch is warning-only (`--strict-head` turns it into mismatch/failure)
+  Optional `snapshot_id`:
+  - when omitted, compare selects latest `origin=user` snapshot from the full
+    shared-folder registry (all roots sharing this folder-name registry)
+  - selection order:
+    1) highest `created_at_epoch`
+    2) tie-break: descending lexical snapshot id
+  - if no user-created snapshot exists, compare fails with clear error
+  Head policy:
+  - default: HEAD mismatch is warning-only
+  - `--strict-head`: HEAD mismatch becomes mismatch/failure
+  Exit behavior:
+  - default compare is diagnostic and exits `0` on successful execution, even if
+    differences are found
+  - `--assert-equal`: differences become failure (`exit 3`)
+  Output disclosure:
+  - prints selected snapshot id, selection mode (`explicit` or
+    `latest-user-default`), snapshot origin, snapshot root, and current root
+  Optional flags:
+  - `--repo <rel_path>`  : compare one snapshot repo path
+  - `--strict-head`      : require current HEAD to equal snapshot HEAD
+  - `--assert-equal`     : fail on differences (`exit 3`)
+  - `--porcelain`        : stable machine output (`compare_target` / `compare` / `compare_summary`)
+
+verify [snapshot_id] [--repo <rel_path>] [--strict-head] [--porcelain]
+  VERIFY IS A WRAPPER OVER COMPARE (equivalent to compare --assert-equal).
+  verify reuses compare target selection and compares the same state:
+  - staged patch bytes
+  - unstaged patch bytes
+  - untracked non-ignored file set+content
+  Optional `snapshot_id`:
+  - same resolver as compare when omitted (latest user-created snapshot from
+    shared-folder registry scope)
+  Head policy:
+  - default: HEAD mismatch is warning-only (`--strict-head` turns it into mismatch/failure)
   Caveat:
   - default mode does not guarantee full tracked clean-file equivalence across branches/commits
   Optional flags:
   - `--repo <rel_path>` : verify one snapshot repo path
   - `--strict-head`     : require current HEAD to equal snapshot HEAD
-  - `--porcelain`       : stable machine output
+  - `--porcelain`       : stable machine output (`verify` / `verify_summary`)
   Exit codes:
   - 0 : verified (or warnings only)
   - 3 : mismatches detected
@@ -226,6 +259,9 @@ Deep inspection:
   git-snapshot restore-check before-rebase --details
   git-snapshot restore-check before-rebase --files
   git-snapshot restore-check before-rebase --porcelain
+  git-snapshot compare before-rebase
+  git-snapshot compare before-rebase --assert-equal
+  git-snapshot compare --strict-head
   git-snapshot verify before-rebase
   git-snapshot verify before-rebase --strict-head
   git-snapshot verify before-rebase --porcelain
@@ -241,6 +277,8 @@ Troubleshooting
   resolved root repo is outside `GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX`.
 - restore-check exits 3:
   one or more repos are not restore-compatible in current state.
+- compare exits 3:
+  differences found while using `--assert-equal`.
 - verify exits 3:
   one or more snapshot working-set mismatches were detected.
 - restore failed:
@@ -1551,58 +1589,94 @@ _git_snapshot_write_snapshot_untracked_manifest() {
   LC_ALL=C sort -o "${output_file}" "${output_file}"
 }
 
-_git_snapshot_cmd_verify() {
+_git_snapshot_resolve_compare_target() {
   local root_repo="$1"
-  shift
+  local provided_snapshot_id="${2:-}"
 
   local snapshot_id=""
-  local repo_filter=""
-  local repo_filter_cmd_fragment=""
-  local porcelain="false"
-  local strict_head="false"
+  local selection_mode=""
+  local snapshot_path=""
+  local selected_created_at_epoch=""
+  local selected_snapshot_root=""
+  local selected_snapshot_origin=""
 
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --repo)
-        if [[ -z "${2:-}" ]]; then
-          _git_snapshot_ui_err "Missing value for --repo"
-          return 1
-        fi
-        repo_filter="$2"
-        shift
-        ;;
-      --porcelain)
-        porcelain="true"
-        ;;
-      --strict-head)
-        strict_head="true"
-        ;;
-      -*)
-        _git_snapshot_ui_err "Unknown option for verify: $1"
-        return 1
-        ;;
-      *)
-        if [[ -z "${snapshot_id}" ]]; then
-          snapshot_id="$1"
-        else
-          _git_snapshot_ui_err "Unexpected argument for verify: $1"
-          return 1
-        fi
-        ;;
-    esac
-    shift
-  done
+  if [[ -n "${provided_snapshot_id}" ]]; then
+    _git_snapshot_validate_snapshot_id "${provided_snapshot_id}"
+    _git_snapshot_store_assert_snapshot_exists "${root_repo}" "${provided_snapshot_id}"
+    snapshot_id="${provided_snapshot_id}"
+    selection_mode="explicit"
+    snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
+    _git_snapshot_store_load_snapshot_meta "${snapshot_path}" || return 1
+    selected_created_at_epoch="${CREATED_AT_EPOCH}"
+    selected_snapshot_root="${ROOT_REPO}"
+    selected_snapshot_origin="${SNAPSHOT_ORIGIN}"
+  else
+    local candidate_id candidate_path
+    local candidate_epoch
+    local candidate_root
+    local candidate_origin
+    local best_id=""
+    local best_epoch="-1"
+    local best_root=""
+    local best_origin=""
 
-  if [[ -z "${snapshot_id}" ]]; then
-    _git_snapshot_ui_err "Missing snapshot_id for verify"
-    return 1
+    while IFS= read -r candidate_id; do
+      [[ -z "${candidate_id}" ]] && continue
+      candidate_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${candidate_id}")"
+      _git_snapshot_store_load_snapshot_meta "${candidate_path}" || return 1
+      [[ "${SNAPSHOT_ORIGIN}" == "user" ]] || continue
+
+      candidate_epoch="${CREATED_AT_EPOCH}"
+      candidate_root="${ROOT_REPO}"
+      candidate_origin="${SNAPSHOT_ORIGIN}"
+
+      if [[ "${best_id}" == "" \
+            || "${candidate_epoch}" -gt "${best_epoch}" \
+            || ( "${candidate_epoch}" -eq "${best_epoch}" && "${candidate_id}" > "${best_id}" ) ]]; then
+        best_id="${candidate_id}"
+        best_epoch="${candidate_epoch}"
+        best_root="${candidate_root}"
+        best_origin="${candidate_origin}"
+      fi
+    done < <(_git_snapshot_store_list_snapshot_ids "${root_repo}")
+
+    if [[ -z "${best_id}" ]]; then
+      _git_snapshot_ui_err "No user-created snapshot found to compare against."
+      return 1
+    fi
+
+    snapshot_id="${best_id}"
+    selection_mode="latest-user-default"
+    snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
+    selected_created_at_epoch="${best_epoch}"
+    selected_snapshot_root="${best_root}"
+    selected_snapshot_origin="${best_origin}"
   fi
 
-  _git_snapshot_validate_snapshot_id "${snapshot_id}"
-  _git_snapshot_store_assert_snapshot_exists "${root_repo}" "${snapshot_id}"
+  GSN_COMPARE_SNAPSHOT_ID="${snapshot_id}"
+  GSN_COMPARE_SELECTION_MODE="${selection_mode}"
+  GSN_COMPARE_SNAPSHOT_PATH="${snapshot_path}"
+  GSN_COMPARE_SNAPSHOT_CREATED_AT_EPOCH="${selected_created_at_epoch}"
+  GSN_COMPARE_SNAPSHOT_ROOT="${selected_snapshot_root}"
+  GSN_COMPARE_SNAPSHOT_ORIGIN="${selected_snapshot_origin}"
+}
+
+_git_snapshot_compare_engine() {
+  local root_repo="$1"
+  local mode_label="$2"
+  local snapshot_id="$3"
+  local repo_filter="$4"
+  local strict_head="$5"
+  local assert_equal="$6"
+  local porcelain="$7"
+  local selection_mode="$8"
+  local snapshot_meta_root="$9"
+  local snapshot_meta_origin="${10}"
+
   local snapshot_path
   snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
 
+  local repo_filter_cmd_fragment=""
   if [[ -n "${repo_filter}" ]]; then
     _git_snapshot_validate_repo_filter "${snapshot_path}" "${repo_filter}"
     repo_filter_cmd_fragment=" --repo ${repo_filter}"
@@ -1614,6 +1688,29 @@ _git_snapshot_cmd_verify() {
   local mismatch_rows=""
   local warning_rows=""
   local repo_id rel_path snapshot_head _status_hash
+
+  local row_key="compare"
+  local summary_key="compare_summary"
+  local heading_title="Snapshot compare"
+  local counter_label="differences"
+  local verdict_ok="Compare: no differences within snapshot scope."
+  local verdict_bad="Compare: differences detected."
+  local findings_label="Differences"
+
+  if [[ "${mode_label}" == "verify" ]]; then
+    row_key="verify"
+    summary_key="verify_summary"
+    heading_title="Snapshot verify"
+    counter_label="mismatches"
+    verdict_ok="Verification: match within snapshot scope."
+    verdict_bad="Verification: mismatches detected."
+    findings_label="Mismatches"
+  fi
+
+  if [[ "${porcelain}" == "true" && "${mode_label}" == "compare" ]]; then
+    printf "compare_target\tselected_snapshot_id=%s\tselection_mode=%s\tsnapshot_origin=%s\tsnapshot_root=%s\tcurrent_root=%s\tstrict_head=%s\tassert_equal=%s\n" \
+      "${snapshot_id}" "${selection_mode}" "${snapshot_meta_origin}" "${snapshot_meta_root}" "${root_repo}" "${strict_head}" "${assert_equal}"
+  fi
 
   while IFS=$'\t' read -r repo_id rel_path snapshot_head _status_hash; do
     [[ -z "${repo_id}" ]] && continue
@@ -1731,24 +1828,33 @@ _git_snapshot_cmd_verify() {
     fi
 
     if [[ "${porcelain}" == "true" ]]; then
-      printf "verify\tsnapshot_id=%s\trepo=%s\thead=%s\tstaged=%s\tunstaged=%s\tuntracked=%s\tstrict_head=%s\thas_mismatch=%s\thas_warning=%s\n" \
-        "${snapshot_id}" "${rel_path}" "${head_state}" "${staged_state}" "${unstaged_state}" "${untracked_state}" "${strict_head}" "${has_mismatch}" "${has_warning}"
+      printf "%s\tsnapshot_id=%s\trepo=%s\thead=%s\tstaged=%s\tunstaged=%s\tuntracked=%s\tstrict_head=%s\thas_mismatch=%s\thas_warning=%s\n" \
+        "${row_key}" "${snapshot_id}" "${rel_path}" "${head_state}" "${staged_state}" "${unstaged_state}" "${untracked_state}" "${strict_head}" "${has_mismatch}" "${has_warning}"
     fi
   done < <(_git_snapshot_store_read_repo_entries "${snapshot_path}")
 
   if [[ "${porcelain}" == "true" ]]; then
-    printf "verify_summary\tsnapshot_id=%s\trepos_checked=%s\tmismatches=%s\twarnings=%s\tstrict_head=%s\n" \
-      "${snapshot_id}" "${repos_checked}" "${mismatch_count}" "${warning_count}" "${strict_head}"
+    printf "%s\tsnapshot_id=%s\trepos_checked=%s\tmismatches=%s\twarnings=%s\tstrict_head=%s\n" \
+      "${summary_key}" "${snapshot_id}" "${repos_checked}" "${mismatch_count}" "${warning_count}" "${strict_head}"
   else
-    printf "Snapshot verify: %s\n" "${snapshot_id}"
-    printf "Root: %s\n" "${root_repo}"
+    printf "%s: %s\n" "${heading_title}" "${snapshot_id}"
+    printf "Current root: %s\n" "${root_repo}"
+    printf "Selected snapshot mode: %s\n" "${selection_mode}"
+    printf "Snapshot origin: %s\n" "${snapshot_meta_origin}"
+    printf "Snapshot root: %s\n" "${snapshot_meta_root}"
+    if [[ "${selection_mode}" == "latest-user-default" ]]; then
+      printf "Shared-folder registry note: target selected from all user-created snapshots in this registry.\n"
+    fi
+    if [[ "${mode_label}" == "verify" ]]; then
+      printf "VERIFY IS A WRAPPER OVER COMPARE (equivalent to compare --assert-equal).\n"
+    fi
     printf "Strict head: %s\n" "${strict_head}"
-    printf "Repos checked: %s | mismatches: %s | warnings: %s\n" "${repos_checked}" "${mismatch_count}" "${warning_count}"
+    printf "Repos checked: %s | %s: %s | warnings: %s\n" "${repos_checked}" "${counter_label}" "${mismatch_count}" "${warning_count}"
 
     if [[ "${mismatch_count}" -eq 0 ]]; then
-      printf "Verification: match within snapshot scope.\n"
+      printf "%s\n" "${verdict_ok}"
     else
-      printf "Verification: mismatches detected.\n"
+      printf "%s\n" "${verdict_bad}"
     fi
 
     if [[ -n "${warning_rows}" ]]; then
@@ -1760,7 +1866,7 @@ _git_snapshot_cmd_verify() {
     fi
 
     if [[ -n "${mismatch_rows}" ]]; then
-      printf "\nMismatches:\n"
+      printf "\n%s:\n" "${findings_label}"
       while IFS= read -r row; do
         [[ -z "${row}" ]] && continue
         printf "  - %s\n" "${row}"
@@ -1768,6 +1874,11 @@ _git_snapshot_cmd_verify() {
     fi
 
     if [[ "${mismatch_count}" -gt 0 ]]; then
+      local strict_flag_fragment=""
+      if [[ "${strict_head}" == "true" ]]; then
+        strict_flag_fragment=" --strict-head"
+      fi
+
       printf "\nFollow-up commands for deeper details:\n"
       printf "  - git-snapshot inspect %s%s --staged --unstaged --untracked --name-only\n" "${snapshot_id}" "${repo_filter_cmd_fragment}"
       printf "    Shows full captured file lists for staged/unstaged/untracked snapshot content.\n"
@@ -1775,19 +1886,141 @@ _git_snapshot_cmd_verify() {
       printf "    Shows full patch bodies for tracked snapshot changes.\n"
       printf "  - git-snapshot restore-check %s%s --details --files --no-limit\n" "${snapshot_id}" "${repo_filter_cmd_fragment}"
       printf "    Shows restore-readiness diagnostics against current tree (apply checks + collisions).\n"
+      if [[ "${mode_label}" == "compare" && "${assert_equal}" != "true" ]]; then
+        printf "  - git-snapshot compare %s%s%s --assert-equal\n" "${snapshot_id}" "${repo_filter_cmd_fragment}" "${strict_flag_fragment}"
+        printf "    Turns differences into exit code 3 (verification mode).\n"
+      fi
     fi
 
     if [[ "${strict_head}" != "true" ]]; then
-      printf "\nHint: run \"git-snapshot verify %s --strict-head\" to also require HEAD commit equality.\n" "${snapshot_id}"
-      printf "Default verify mode is file-state focused for long-running workflows where commits may move.\n"
+      if [[ "${mode_label}" == "verify" ]]; then
+        printf "\nHint: run \"git-snapshot verify %s --strict-head\" to also require HEAD commit equality.\n" "${snapshot_id}"
+      else
+        printf "\nHint: run \"git-snapshot compare %s%s --strict-head\" to also require HEAD commit equality.\n" "${snapshot_id}" "${repo_filter_cmd_fragment}"
+      fi
+      printf "Default compare/verify mode is file-state focused for long-running workflows where commits may move.\n"
       printf "If strict-head also passes, tracked + untracked non-ignored state is exact to snapshot scope (ignored files remain out of scope).\n"
     fi
   fi
 
-  if [[ "${mismatch_count}" -gt 0 ]]; then
+  if [[ "${assert_equal}" == "true" && "${mismatch_count}" -gt 0 ]]; then
     return 3
   fi
   return 0
+}
+
+_git_snapshot_cmd_compare() {
+  local root_repo="$1"
+  shift
+
+  local snapshot_id=""
+  local repo_filter=""
+  local porcelain="false"
+  local strict_head="false"
+  local assert_equal="false"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --repo)
+        if [[ -z "${2:-}" ]]; then
+          _git_snapshot_ui_err "Missing value for --repo"
+          return 1
+        fi
+        repo_filter="$2"
+        shift
+        ;;
+      --porcelain)
+        porcelain="true"
+        ;;
+      --strict-head)
+        strict_head="true"
+        ;;
+      --assert-equal)
+        assert_equal="true"
+        ;;
+      -*)
+        _git_snapshot_ui_err "Unknown option for compare: $1"
+        return 1
+        ;;
+      *)
+        if [[ -z "${snapshot_id}" ]]; then
+          snapshot_id="$1"
+        else
+          _git_snapshot_ui_err "Unexpected argument for compare: $1"
+          return 1
+        fi
+        ;;
+    esac
+    shift
+  done
+
+  _git_snapshot_resolve_compare_target "${root_repo}" "${snapshot_id}" || return 1
+  _git_snapshot_compare_engine \
+    "${root_repo}" \
+    "compare" \
+    "${GSN_COMPARE_SNAPSHOT_ID}" \
+    "${repo_filter}" \
+    "${strict_head}" \
+    "${assert_equal}" \
+    "${porcelain}" \
+    "${GSN_COMPARE_SELECTION_MODE}" \
+    "${GSN_COMPARE_SNAPSHOT_ROOT}" \
+    "${GSN_COMPARE_SNAPSHOT_ORIGIN}"
+}
+
+_git_snapshot_cmd_verify() {
+  local root_repo="$1"
+  shift
+
+  local snapshot_id=""
+  local repo_filter=""
+  local porcelain="false"
+  local strict_head="false"
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --repo)
+        if [[ -z "${2:-}" ]]; then
+          _git_snapshot_ui_err "Missing value for --repo"
+          return 1
+        fi
+        repo_filter="$2"
+        shift
+        ;;
+      --porcelain)
+        porcelain="true"
+        ;;
+      --strict-head)
+        strict_head="true"
+        ;;
+      -*)
+        _git_snapshot_ui_err "Unknown option for verify: $1"
+        return 1
+        ;;
+      *)
+        if [[ -z "${snapshot_id}" ]]; then
+          snapshot_id="$1"
+        else
+          _git_snapshot_ui_err "Unexpected argument for verify: $1"
+          return 1
+        fi
+        ;;
+    esac
+    shift
+  done
+
+  _git_snapshot_resolve_compare_target "${root_repo}" "${snapshot_id}" || return 1
+  _git_snapshot_compare_engine \
+    "${root_repo}" \
+    "verify" \
+    "${GSN_COMPARE_SNAPSHOT_ID}" \
+    "${repo_filter}" \
+    "${strict_head}" \
+    "true" \
+    "${porcelain}" \
+    "${GSN_COMPARE_SELECTION_MODE}" \
+    "${GSN_COMPARE_SNAPSHOT_ROOT}" \
+    "${GSN_COMPARE_SNAPSHOT_ORIGIN}"
 }
 
 _git_snapshot_cmd_restore() {
@@ -1903,6 +2136,9 @@ git_snapshot_main() {
       ;;
     restore-check)
       _git_snapshot_cmd_restore_check "${root_repo}" "$@"
+      ;;
+    compare)
+      _git_snapshot_cmd_compare "${root_repo}" "$@"
       ;;
     verify)
       _git_snapshot_cmd_verify "${root_repo}" "$@"

@@ -1,3 +1,39 @@
+v1.0.26 (2026-03-04)
+
+* Reintroduce `git-snapshot compare` as the canonical snapshot-vs-current
+  delta engine.
+
+* Refactor `git-snapshot verify` into a thin wrapper over compare:
+  - verify now delegates to compare with assertion semantics
+  - keep verify porcelain row names (`verify`, `verify_summary`) for
+    downstream compatibility.
+
+* Add optional snapshot-id resolver for compare/verify:
+  - when omitted, select latest `origin=user` snapshot from shared-folder
+    registry scope (all roots sharing folder-name registry)
+  - deterministic resolver order: `created_at_epoch` descending, then
+    snapshot id lexical descending tie-break.
+
+* Add mandatory target-disclosure fields in human compare/verify output:
+  selected snapshot id, selection mode, snapshot origin, snapshot root, and
+  current root.
+
+* Add compare porcelain schema:
+  - `compare_target`
+  - `compare`
+  - `compare_summary`
+
+* Update help/README/skill contract docs to explicitly state:
+  - verify is a wrapper over compare
+  - compare is canonical delta command
+  - no-id default resolver behavior and shared-folder caveat.
+
+* Extend regression coverage:
+  - new compare test suite (diagnostic vs assert mode, no-id resolver,
+    auto-snapshot ignore, shared-folder selection, porcelain rows)
+  - verify no-id resolver and wrapper visibility checks
+  - help output expectations for compare/verify commands.
+
 v1.0.25 (2026-02-27)
 
 * Redesign `git-snapshot list` human output for long snapshot IDs:

@@ -64,18 +64,32 @@
     - `3`: compatibility issues found
     - `1`: usage/runtime error
 
-- `git-snapshot verify <snapshot_id> [--repo <rel_path>] [--strict-head] [--porcelain]`
-  - Verifies snapshot-captured working-set parity against current state:
+- `git-snapshot compare [snapshot_id] [--repo <rel_path>] [--strict-head] [--assert-equal] [--porcelain]`
+  - Canonical snapshot-vs-current delta engine:
     - staged patch bytes
     - unstaged patch bytes
     - untracked non-ignored set+content
+  - Optional `snapshot_id`:
+    - when omitted, select latest `origin=user` snapshot from full shared-folder registry
+      (all roots sharing the folder-name registry)
+    - order: `created_at_epoch` descending, tie-break by snapshot id lexical descending
+    - if no user-created snapshot exists: fail clearly
+  - Human output always discloses selected snapshot id/mode/origin/root/current-root.
   - Default head policy: HEAD mismatch is warning-only.
   - `--strict-head`: HEAD mismatch becomes mismatch/failure.
-  - Why default is non-strict: supports long-running workflows where new commits
-    are expected after snapshot creation but working-set parity remains the main
-    recoverability target.
-  - When to use strict: commit identity itself is a requirement (for example,
-    rebase-sensitive checkpoints).
+  - Default compare mode is diagnostic:
+    - exit `0` on successful execution even if differences exist
+  - `--assert-equal` enables verification mode:
+    - differences return exit `3`
+  - Exit codes:
+    - `0`: compare ran successfully (diagnostic mode, with or without differences)
+    - `3`: differences found with `--assert-equal`
+    - `1`: usage/runtime error
+
+- `git-snapshot verify [snapshot_id] [--repo <rel_path>] [--strict-head] [--porcelain]`
+  - VERIFY IS A WRAPPER OVER COMPARE (equivalent to `compare --assert-equal`).
+  - Uses same optional snapshot target resolver when `snapshot_id` is omitted.
+  - Keeps verify-oriented porcelain rows (`verify`, `verify_summary`).
   - Exit codes:
     - `0`: verified (or warnings only in default mode)
     - `3`: mismatches found

@@ -17,11 +17,16 @@ assert_eq "verify-baseline" "${snapshot_id}" "create should preserve explicit ve
 
 verify_clean_output="$(cd "${root_repo}" && git_snapshot_test_cmd verify "${snapshot_id}")"
 assert_contains "Snapshot verify: ${snapshot_id}" "${verify_clean_output}" "verify should include heading"
+assert_contains "VERIFY IS A WRAPPER OVER COMPARE" "${verify_clean_output}" "verify output should document wrapper semantics"
 assert_contains "Strict head: false" "${verify_clean_output}" "verify default mode should be non-strict head"
 assert_contains "mismatches: 0" "${verify_clean_output}" "clean snapshot should report no mismatches"
 assert_contains "warnings: 0" "${verify_clean_output}" "clean snapshot should report no warnings"
 assert_not_contains "Follow-up commands for deeper details:" "${verify_clean_output}" "clean verify should not print mismatch follow-up guidance"
 assert_contains "Hint: run \"git-snapshot verify ${snapshot_id} --strict-head\" to also require HEAD commit equality." "${verify_clean_output}" "verify default mode should include strict-head hint"
+
+verify_default_target_output="$(cd "${root_repo}" && git_snapshot_test_cmd verify)"
+assert_contains "Snapshot verify: ${snapshot_id}" "${verify_default_target_output}" "verify without id should use latest user-created snapshot"
+assert_contains "Selected snapshot mode: latest-user-default" "${verify_default_target_output}" "verify without id should disclose default target selection"
 
 # Move only HEAD: working-set stays clean, so default verify should warn but pass.
 printf "head-shift\n" >> "${root_repo}/root.txt"

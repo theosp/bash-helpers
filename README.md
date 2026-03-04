@@ -89,9 +89,12 @@ Restore aims to re-create:
 
 Ignored files are intentionally out of scope.
 
-### Verify semantics and caveat
+### Compare/Verify semantics and caveat
 
-`git-snapshot verify` checks snapshot-captured working-set equivalence:
+`git-snapshot compare` is the canonical snapshot-vs-current delta engine.
+`git-snapshot verify` is a wrapper over compare (`compare --assert-equal`).
+
+Both compare and verify inspect snapshot-captured working-set equivalence:
 - staged patch bytes
 - unstaged patch bytes
 - untracked non-ignored file set+content
@@ -103,6 +106,13 @@ then later restore/check parity of the captured working set.
 Use `--strict-head` when commit identity itself is part of the requirement
 (for example rebase-sensitive checkpoints or when you must ensure the exact same
 commit baseline before proceeding).
+
+When `snapshot_id` is omitted for compare/verify:
+- the tool selects the latest `origin=user` snapshot from the entire shared-folder registry
+- selection order:
+  1. highest `created_at_epoch`
+  2. tie-break by descending lexical snapshot id
+- if no user-created snapshot exists, the command fails clearly
 
 ## Command Reference
 
@@ -224,10 +234,30 @@ Exit codes:
 `--files` includes captured file inventories and collision file details (implies `--details`).
 `--all-repos` includes clean repos in summary output.
 
-### `git-snapshot verify <snapshot_id> [--repo <rel_path>] [--strict-head] [--porcelain]`
+### `git-snapshot compare [snapshot_id] [--repo <rel_path>] [--strict-head] [--assert-equal] [--porcelain]`
 
-Verifies whether the current working-set state matches what the snapshot
-captured.
+Compares current state against snapshot-captured state.
+
+Default behavior is diagnostic:
+- reports differences/warnings
+- exits `0` on successful execution even when differences are found
+
+With `--assert-equal`:
+- differences become failure (`exit 3`)
+
+Target selection:
+- explicit id: compare that snapshot
+- omitted id: latest user-created snapshot from shared-folder registry scope
+
+Human output always discloses:
+- selected snapshot id
+- selection mode (`explicit` / `latest-user-default`)
+- snapshot origin and snapshot root
+- current root
+
+### `git-snapshot verify [snapshot_id] [--repo <rel_path>] [--strict-head] [--porcelain]`
+
+VERIFY IS A WRAPPER OVER COMPARE (equivalent to `compare --assert-equal`).
 
 Default checks:
 - staged patch bytes match
