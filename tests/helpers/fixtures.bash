@@ -92,3 +92,22 @@ git_snapshot_test_snapshot_root_for_repo() {
   local root_repo="$1"
   printf "%s/git-snapshots/%s\n" "${TEST_HOME}" "$(basename "${root_repo}")"
 }
+
+git_snapshot_test_collect_dirty_relative_paths() {
+  local root_repo="$1"
+  local rel_path repo_abs
+
+  {
+    printf ".\n"
+    git -C "${root_repo}" submodule --quiet foreach --recursive 'printf "%s\n" "$displaypath"'
+  } | while IFS= read -r rel_path; do
+    [[ -z "${rel_path}" ]] && continue
+    repo_abs="${root_repo}/${rel_path}"
+    if [[ ! -d "${repo_abs}" ]]; then
+      continue
+    fi
+    if [[ -n "$(git -C "${repo_abs}" status --porcelain 2>/dev/null || true)" ]]; then
+      printf "%s\n" "${rel_path}"
+    fi
+  done
+}

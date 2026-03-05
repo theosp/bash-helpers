@@ -29,5 +29,5 @@ if [[ -d "${snapshot_root}" ]]; then
   assert_eq "0" "${snapshot_count}" "reset-all should not create snapshot when prompt cannot be answered"
 fi
 
-dirty_output="$(cd "${root_repo}" && git_snapshot_test_cmd debug-dirty)"
+dirty_output="$(git_snapshot_test_collect_dirty_relative_paths "${root_repo}")"
 assert_contains "." "${dirty_output}" "reset-all should not mutate tree when prompt cannot be answered"

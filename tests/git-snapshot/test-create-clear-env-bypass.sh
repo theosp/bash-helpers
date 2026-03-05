@@ -20,5 +20,5 @@ snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${create_ou
 assert_non_empty "${snapshot_id}" "create --clear should return snapshot id with env bypass"
 assert_contains "Created snapshot" "${create_output}" "create --clear should still report snapshot creation"
 
-dirty_output="$(cd "${root_repo}" && git_snapshot_test_cmd debug-dirty)"
+dirty_output="$(git_snapshot_test_collect_dirty_relative_paths "${root_repo}")"
 assert_eq "" "${dirty_output}" "env-bypassed create --clear should leave clean repos"

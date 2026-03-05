@@ -22,5 +22,5 @@ set -e
 assert_exit_code 1 "${reset_code}" "reset-all should fail when both snapshot flags are provided"
 assert_contains "--snapshot and --no-snapshot cannot be used together" "${reset_output}" "reset-all should explain conflicting flags"
 
-dirty_output="$(cd "${root_repo}" && git_snapshot_test_cmd debug-dirty)"
+dirty_output="$(git_snapshot_test_collect_dirty_relative_paths "${root_repo}")"
 assert_contains "." "${dirty_output}" "reset-all should not mutate tree on conflicting flags"

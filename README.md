@@ -89,21 +89,19 @@ Restore aims to re-create:
 
 Ignored files are intentionally out of scope.
 
-### Compare/Verify semantics and caveat
+### Compare semantics
 
-`git-snapshot compare` is the canonical snapshot-vs-current delta engine.
-`git-snapshot verify` is a wrapper over compare (`compare --assert-equal`).
+`git-snapshot compare` evaluates progress of snapshot-captured work items.
 
-Both compare and verify inspect snapshot-captured working-set equivalence:
-- staged patch bytes
-- unstaged patch bytes
-- untracked non-ignored file set+content
+Compare tracks only files touched by the snapshot bundles (staged/unstaged/untracked at capture time), and classifies each touched file as:
+- `resolved_committed`
+- `resolved_uncommitted`
+- `unresolved_missing`
+- `unresolved_diverged`
 
-HEAD differences are informational only and printed in a dedicated
-`Head differences` section. Compare/verify mismatch outcomes are based only on
-file-state differences.
+Default compare output shows unresolved rows only. Use `--all` to include resolved rows.
 
-When `snapshot_id` is omitted for compare/verify:
+When `snapshot_id` is omitted for compare:
 - the tool selects the latest `origin=user` snapshot from the entire shared-folder registry
 - selection order:
   1. highest `created_at_epoch`
@@ -230,62 +228,36 @@ Exit codes:
 `--files` includes captured file inventories and collision file details (implies `--details`).
 `--all-repos` includes clean repos in summary output.
 
-### `git-snapshot compare [snapshot_id] [--repo <rel_path>] [--strict-head] [--assert-equal] [--porcelain]`
+### `git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--porcelain]`
 
-Compares current state against snapshot-captured state.
+Compares current progress against snapshot-captured work items.
 
-Default behavior is diagnostic:
-- reports differences and head-difference information
-- exits `0` on successful execution even when differences are found
-- `--strict-head` is accepted as a deprecated compatibility no-op (head differences remain informational)
+Default behavior:
+- compare evaluates files touched by the snapshot bundles
+- output shows unresolved rows only
+- exits `0` on successful completion
 
-With `--assert-equal`:
-- differences become failure (`exit 3`)
+Use `--all` to include resolved rows.
+
+Status model:
+- `resolved_committed`: snapshot target matches `HEAD` and current working tree
+- `resolved_uncommitted`: snapshot target matches working tree but not `HEAD`
+- `unresolved_missing`: snapshot target path is missing
+- `unresolved_diverged`: current content or mode diverges from snapshot target
 
 Target selection:
 - explicit id: compare that snapshot
 - omitted id: latest user-created snapshot from shared-folder registry scope
 
-Human output always discloses:
-- selected snapshot id
-- selection mode (`explicit` / `latest-user-default`)
-- snapshot origin and snapshot root
-- current root
-- repo summary with:
-  - repos with file differences
-  - repos with head differences
-- dedicated sections:
-  - `Head differences` (informational)
-  - `Differences` (repo -> file -> full inline state-aware diffs)
-- in `--porcelain`, `compare_file` rows include `diff_kind`:
-  - `none`
-  - `state-transition-only`
-  - `content-only`
-  - `state+content`
-- `compare_summary` includes `contract_version=2`
+Human output discloses selected snapshot metadata and status totals.
 
-### `git-snapshot verify [snapshot_id] [--repo <rel_path>] [--strict-head] [--porcelain]`
-
-VERIFY IS A WRAPPER OVER COMPARE (equivalent to `compare --assert-equal`).
-
-Default checks:
-- staged patch bytes match
-- unstaged patch bytes match
-- untracked non-ignored set+content match
-
-Head policy:
-- HEAD differences are informational and do not affect verify exit status.
-- `--strict-head` is accepted as a deprecated compatibility no-op.
-- in `--porcelain`, `verify_file` rows include `diff_kind`:
-  - `none`
-  - `state-transition-only`
-  - `content-only`
-  - `state+content`
-- `verify_summary` includes `contract_version=2`
+Porcelain rows:
+- `compare_target`: selected snapshot metadata + visibility mode
+- `compare_file`: one row per shown file with `status` and `reason`
+- `compare_summary`: totals and `contract_version=3`
 
 Exit codes:
-- `0`: verified
-- `3`: mismatches detected
+- `0`: compare completed
 - `1`: usage/runtime error
 
 ### `git-snapshot restore <snapshot_id>`
@@ -308,10 +280,6 @@ GIT_SNAPSHOT_CONFIRM_RESTORE=RESTORE git-snapshot restore <snapshot_id>
 ### `git-snapshot delete <snapshot_id>`
 
 Deletes snapshot directory data.
-
-### `git-snapshot debug-dirty`
-
-Prints dirty repo relative paths discovered in root scope and initialized submodules.
 
 ## Output Modes
 

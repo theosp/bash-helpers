@@ -29,7 +29,7 @@ if [[ -d "${snapshot_root}" ]]; then
   assert_eq "0" "${snapshot_count}" "snapshot should not be created when clear confirmation is missing"
 fi
 
-dirty_output="$(cd "${root_repo}" && git_snapshot_test_cmd debug-dirty)"
+dirty_output="$(git_snapshot_test_collect_dirty_relative_paths "${root_repo}")"
 assert_contains "." "${dirty_output}" "dirty state should remain when clear is cancelled"
 
 set +e

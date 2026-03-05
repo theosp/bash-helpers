@@ -64,52 +64,31 @@
     - `3`: compatibility issues found
     - `1`: usage/runtime error
 
-- `git-snapshot compare [snapshot_id] [--repo <rel_path>] [--strict-head] [--assert-equal] [--porcelain]`
-  - Canonical snapshot-vs-current delta engine:
-    - staged patch bytes
-    - unstaged patch bytes
-    - untracked non-ignored set+content
+- `git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--porcelain]`
+  - Snapshot progress engine over snapshot-captured files only.
   - Optional `snapshot_id`:
     - when omitted, select latest `origin=user` snapshot from full shared-folder registry
       (all roots sharing the folder-name registry)
     - order: `created_at_epoch` descending, tie-break by snapshot id lexical descending
     - if no user-created snapshot exists: fail clearly
-  - Human output always discloses selected snapshot id/mode/origin/root/current-root.
-  - Head differences are informational and shown in a dedicated section.
-  - `--strict-head` is accepted as a deprecated compatibility no-op.
-  - File mismatch decisions are based on captured staged/unstaged/untracked parity.
-  - Default compare mode is diagnostic:
-    - exit `0` on successful execution even if differences exist
-  - `--assert-equal` enables verification mode:
-    - differences return exit `3`
+  - Status model per file:
+    - `resolved_committed`: snapshot target matches `HEAD` and current working tree
+    - `resolved_uncommitted`: snapshot target matches working tree but not `HEAD`
+    - `unresolved_missing`: snapshot target path is missing from working tree
+    - `unresolved_diverged`: current content or mode diverges from snapshot target
+  - Visibility policy:
+    - default: show unresolved rows only
+    - `--all`: show resolved and unresolved rows
+  - Default compare is diagnostic and exits `0` on successful execution.
   - Porcelain rows:
     - `compare_target`: selected snapshot metadata (`selected_snapshot_id`,
-      `selection_mode`, `snapshot_origin`, `snapshot_root`, `current_root`, `assert_equal`)
-    - `compare`: repo-level status (`head_state`, `head_relation`,
-      `head_ahead`, `head_behind`, `file_diff`, `changed_files`)
-    - `compare_file`: file-level matrix (`snapshot_states`, `current_states`,
-      `state_transition`, `has_diff`, `diff_kind`)
-      where `diff_kind` is one of:
-      - `none`
-      - `state-transition-only`
-      - `content-only`
-      - `state+content`
-    - `compare_summary`: totals (`repos_checked`, `diff_repos`,
-      `head_diff_repos`, `diff_files_total`) + `contract_version=2`
+      `selection_mode`, `snapshot_origin`, `snapshot_root`, `current_root`, `show_all`)
+    - `compare_file`: file-level status (`status`, `reason`)
+    - `compare_summary`: totals (`repos_checked`, `files_total`,
+      `resolved_committed`, `resolved_uncommitted`, `unresolved_missing`,
+      `unresolved_diverged`, `unresolved_total`, `shown_files`) + `contract_version=3`
   - Exit codes:
-    - `0`: compare ran successfully (diagnostic mode, with or without differences)
-    - `3`: differences found with `--assert-equal`
-    - `1`: usage/runtime error
-
-  - `git-snapshot verify [snapshot_id] [--repo <rel_path>] [--strict-head] [--porcelain]`
-  - VERIFY IS A WRAPPER OVER COMPARE (equivalent to `compare --assert-equal`).
-  - `--strict-head` is accepted as a deprecated compatibility no-op.
-  - Uses same optional snapshot target resolver when `snapshot_id` is omitted.
-  - Keeps verify-oriented porcelain rows (`verify`, `verify_file`, `verify_summary`)
-    with the same field semantics as compare rows.
-  - Exit codes:
-    - `0`: verified
-    - `3`: mismatches found
+    - `0`: compare completed
     - `1`: usage/runtime error
 
 - `git-snapshot restore <snapshot_id> [--on-conflict <reject|rollback>] [--porcelain]`
@@ -125,9 +104,6 @@
 
 - `git-snapshot delete <snapshot_id>`
   - Deletes snapshot data for the given id.
-
-- `git-snapshot debug-dirty`
-  - Lists dirty repos in scope (root and submodules).
 
 ## Exactness semantics
 

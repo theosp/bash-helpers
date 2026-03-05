@@ -1,3 +1,38 @@
+v1.0.27 (2026-03-05)
+
+* Reframe `git-snapshot compare` as the canonical progress command and
+  remove legacy compare/verify compatibility modes from the CLI surface.
+
+* Compare now resolves status with mode-aware and object-type-aware matching:
+  - compare signatures include content + mode for regular files and symlinks
+  - `resolved_committed` now requires snapshot target parity in both `HEAD`
+    and current working tree
+  - `resolved_uncommitted` now indicates working-tree parity when `HEAD`
+    still differs.
+
+* Fix compare correctness for edge cases:
+  - snapshots captured from repos without an initial commit (unborn `HEAD`)
+    now compare successfully
+  - mode-only and symlink-only changes now classify correctly
+  - worktree divergence is no longer hidden when `HEAD` still matches target.
+
+* Keep compare target-selection behavior:
+  - when `snapshot_id` is omitted, select latest `origin=user` snapshot from
+    shared-folder registry scope using deterministic timestamp/id ordering.
+
+* Update compare contracts and docs:
+  - porcelain remains `compare_target` / `compare_file` / `compare_summary`
+    with `contract_version=3`
+  - help/README/skill contract text now aligns with removed `verify`
+    command, removed strict/assert flags, and current status semantics.
+
+* Extend regression and performance coverage:
+  - add compare status-contract tests for mode, symlink, and worktree/HEAD
+    divergence behavior
+  - add unborn-HEAD compare regression coverage
+  - expand compare benchmark smoke checks to cover both resolved and
+    unresolved large-file workloads.
+
 v1.0.26 (2026-03-04)
 
 * Reintroduce `git-snapshot compare` as the canonical snapshot-vs-current

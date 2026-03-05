@@ -30,5 +30,5 @@ assert_eq "drift-case" "${snapshot_id}" "snapshot id should still be reported as
 assert_contains "Submodule HEAD drift remains by design" "${create_output}" "clear should warn on submodule drift"
 assert_contains "modules/sub1" "${create_output}" "drift warning should include submodule path"
 
-dirty_output="$(cd "${root_repo}" && git_snapshot_test_cmd debug-dirty)"
+dirty_output="$(git_snapshot_test_collect_dirty_relative_paths "${root_repo}")"
 assert_contains "." "${dirty_output}" "root should remain dirty due submodule HEAD drift warning mode"

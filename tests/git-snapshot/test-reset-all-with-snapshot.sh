@@ -40,7 +40,7 @@ assert_contains "pre-reset-" "${auto_snapshot_id}" "reset-all auto snapshot id s
 snapshot_root="$(git_snapshot_test_snapshot_root_for_repo "${root_repo}")"
 assert_file_exists "${snapshot_root}/${auto_snapshot_id}/meta.env" "auto snapshot metadata should exist"
 
-dirty_output="$(cd "${root_repo}" && git_snapshot_test_cmd debug-dirty)"
+dirty_output="$(git_snapshot_test_collect_dirty_relative_paths "${root_repo}")"
 assert_eq "" "${dirty_output}" "reset-all --snapshot should leave no dirty repos"
 
 assert_file_not_exists "${root_repo}/reset-all-root.txt" "root untracked should be removed by reset-all"

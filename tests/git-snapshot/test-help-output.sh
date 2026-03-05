@@ -26,16 +26,12 @@ assert_contains "Default list view hides auto-generated internal snapshots." "${
 assert_contains "git-snapshot inspect <snapshot_id>" "${help_output}" "help should document inspect command"
 assert_contains "--name-only|--stat|--diff" "${help_output}" "help should document inspect render flags"
 assert_contains "\`--stat\`      : git apply --stat summary (default: on)" "${help_output}" "help should label inspect default render mode"
-assert_not_contains "inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--name-only|--stat|--diff] [--limit <n>|--no-limit]" "${help_output}" "inspect usage should not advertise removed limit flags"
 assert_contains "git-snapshot restore-check <snapshot_id>" "${help_output}" "help should document restore-check command"
-assert_contains "git-snapshot compare [snapshot_id]" "${help_output}" "help should document compare command"
-assert_contains "git-snapshot verify [snapshot_id]" "${help_output}" "help should document verify command"
-assert_contains "git-snapshot restore <snapshot_id> [--on-conflict <reject|rollback>] [--porcelain]" "${help_output}" "help should document restore conflict/porcelain flags"
-assert_contains "default (\`--on-conflict reject\`)" "${help_output}" "help should explain default reject restore mode"
-assert_contains "HEAD differences are informational only" "${help_output}" "help should explain head-difference policy"
-assert_contains "VERIFY IS A WRAPPER OVER COMPARE" "${help_output}" "help should explain verify wrapper semantics"
-assert_contains "--strict-head" "${help_output}" "help should include strict-head compatibility option"
-assert_contains "deprecated compatibility no-op" "${help_output}" "help should disclose strict-head deprecation behavior"
+assert_contains "git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--porcelain]" "${help_output}" "help should document compare command"
+assert_not_contains "git-snapshot verify" "${help_output}" "help should not document removed verify command"
+assert_not_contains "debug-dirty" "${help_output}" "help should not document removed debug-dirty command"
+assert_not_contains "--assert-equal" "${help_output}" "help should not mention removed compare assert mode"
+assert_not_contains "--strict-head" "${help_output}" "help should not mention removed strict-head compatibility"
 assert_contains "Troubleshooting" "${help_output}" "help should include troubleshooting guidance"
 
 set +e
@@ -43,9 +39,13 @@ old_diff_output="$(cd "${root_repo}" && git_snapshot_test_cmd diff legacy-id 2>&
 old_diff_code=$?
 old_show_output="$(cd "${root_repo}" && git_snapshot_test_cmd show legacy-id 2>&1)"
 old_show_code=$?
+old_verify_output="$(cd "${root_repo}" && git_snapshot_test_cmd verify legacy-id 2>&1)"
+old_verify_code=$?
 set -e
 
 assert_exit_code 1 "${old_diff_code}" "old diff command should fail after hard rename"
 assert_contains "Unknown command: diff" "${old_diff_output}" "old diff command should be unknown"
 assert_exit_code 1 "${old_show_code}" "show command should fail after hard removal"
 assert_contains "Unknown command: show" "${old_show_output}" "show command should be unknown"
+assert_exit_code 1 "${old_verify_code}" "verify command should fail after hard removal"
+assert_contains "Unknown command: verify" "${old_verify_output}" "verify command should be unknown"

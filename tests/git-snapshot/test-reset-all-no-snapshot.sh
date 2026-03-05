@@ -33,7 +33,7 @@ reset_output="$(cd "${root_repo}" && git_snapshot_test_cmd reset-all --no-snapsh
 assert_contains "Proceeding without pre-clear snapshot." "${reset_output}" "reset-all should report no-snapshot mode"
 assert_contains "Clear completed" "${reset_output}" "reset-all should report clear completion"
 
-dirty_output="$(cd "${root_repo}" && git_snapshot_test_cmd debug-dirty)"
+dirty_output="$(git_snapshot_test_collect_dirty_relative_paths "${root_repo}")"
 assert_eq "" "${dirty_output}" "reset-all --no-snapshot should leave no dirty repos"
 
 assert_file_not_exists "${root_repo}/reset-all-root.txt" "root untracked should be removed by reset-all"

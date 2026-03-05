@@ -25,7 +25,7 @@ sub2="${sub1}/modules/sub2"
 printf "sub2-staged\n" >> "${sub2}/sub2.txt"
 git -C "${sub2}" add sub2.txt
 
-dirty_output="$(cd "${sub2}" && git_snapshot_test_cmd debug-dirty)"
+dirty_output="$(git_snapshot_test_collect_dirty_relative_paths "${root_repo}")"
 assert_contains "." "${dirty_output}" "dirty list should include root repo"
 assert_contains "modules/sub1" "${dirty_output}" "dirty list should include first-level submodule"
 assert_contains "modules/sub1/modules/sub2" "${dirty_output}" "dirty list should include nested submodule"

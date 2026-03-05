@@ -388,7 +388,7 @@ _git_snapshot_restore_emit_partial_summary_human() {
   _git_snapshot_ui_info "Next steps:"
   _git_snapshot_ui_info "  1) Resolve *.rej files and remove them."
   _git_snapshot_ui_info "  2) Resolve untracked-collision files."
-  _git_snapshot_ui_info "  3) Run: git-snapshot verify ${target_snapshot_id}"
+  _git_snapshot_ui_info "  3) Run: git-snapshot compare ${target_snapshot_id}"
   if [[ -n "${safety_snapshot_id}" ]]; then
     _git_snapshot_ui_info "To abort and fully revert to pre-restore state:"
     _git_snapshot_ui_info "  git-snapshot restore ${safety_snapshot_id}"

@@ -1,6 +1,6 @@
 ---
 name: git-snapshot-workflow
-description: Use when user asks to create/compare/verify/restore git-snapshot checkpoints or reason about recoverability.
+description: Use when user asks to create/compare/restore git-snapshot checkpoints or reason about recoverability.
 ---
 
 # Git Snapshot Workflow
@@ -46,15 +46,13 @@ Follow this sequence and report each step.
   - use `--snapshot` or `--no-snapshot` in non-interactive/automation contexts
   - `--snapshot` creates an auto snapshot (`origin=auto`) with `pre-reset-` prefix
 
-2. Compare/verify snapshot
-- Run: `git-snapshot inspect <snapshot_id>`
+2. Compare snapshot progress
+- Run: `git-snapshot inspect <snapshot_id>`.
 - Confirm captured content summary and per-repo stat details are present.
-- Run: `git-snapshot compare <snapshot_id>`
-  - canonical snapshot-vs-current delta engine
-  - default compare mode is diagnostic (exit `0` even when differences exist)
-  - use `--assert-equal` to fail on differences (exit `3`)
-  - HEAD differences are informational and shown in a dedicated section
-- `git-snapshot verify` is a wrapper over compare (`compare --assert-equal`)
+- Run: `git-snapshot compare <snapshot_id>`.
+  - default compare output is unresolved-only
+  - use `--all` when you need resolved rows too
+  - compare is diagnostic and returns `0` on successful execution
 
 3. Restore snapshot (only on explicit user restore intent)
 - Explain restore is destructive for tracked changes and untracked non-ignored files.
@@ -69,7 +67,7 @@ Follow this sequence and report each step.
 
 4. Post-restore verification
 - Re-run: `git-snapshot inspect <snapshot_id>`.
-- Re-run: `git-snapshot compare <snapshot_id> --assert-equal` (or `git-snapshot verify <snapshot_id>` wrapper).
+- Re-run: `git-snapshot compare <snapshot_id> --all`.
 - Check repo status/helper output and summarize whether restore matched expected state.
 
 ## Safety notes
@@ -83,9 +81,9 @@ Follow this sequence and report each step.
 - Human `git-snapshot list` output always prints a note that snapshot registry is keyed by folder
   name (same-name repos share the registry), and prints the root-path column when visible
   snapshots are not all from current root.
-- When `compare`/`verify` are called without `snapshot_id`, they auto-select the latest
+- When `compare` is called without `snapshot_id`, it auto-selects the latest
   user-created snapshot from the entire shared-folder registry (not restricted to current root).
-- Human compare/verify output prints selected snapshot id, selection mode, snapshot root, and current root.
+- Human compare output prints selected snapshot id, selection mode, snapshot root, and current root.
 - `create --clear` has confirmation by default (`[y/N]`) unless `--yes` or `GIT_SNAPSHOT_CONFIRM_CLEAR=YES` is provided.
 - `reset-all` asks whether to create an auto snapshot only when neither `--snapshot` nor `--no-snapshot` is provided.
 
@@ -111,7 +109,7 @@ When using this skill, include:
 - Snapshot id
 - Commands executed
 - Restore command for that snapshot id
-- Verification result summary
+- Compare result summary
 
 ## Failure handling
 

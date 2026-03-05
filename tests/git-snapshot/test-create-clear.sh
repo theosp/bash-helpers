@@ -37,7 +37,7 @@ assert_contains "Clear completed" "${create_output}" "create --clear should repo
 snapshot_root="$(git_snapshot_test_snapshot_root_for_repo "${root_repo}")"
 assert_file_exists "${snapshot_root}/${snapshot_id}/meta.env" "snapshot metadata should exist after clear flow"
 
-dirty_output="$(cd "${root_repo}" && git_snapshot_test_cmd debug-dirty)"
+dirty_output="$(git_snapshot_test_collect_dirty_relative_paths "${root_repo}")"
 assert_eq "" "${dirty_output}" "create --clear should leave no dirty repos in normal cases"
 
 assert_file_not_exists "${root_repo}/new-root.txt" "root untracked should be removed by clear"
