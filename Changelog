@@ -1,3 +1,12 @@
+v1.0.32 (2026-03-05)
+
+* Add `git-snapshot compare --gui` Python interpreter fallback resolution:
+  default launch now tries `python3`, `/usr/bin/python3`, `/opt/homebrew/bin/python3`, and `python` (unless overridden).
+
+* Add `GIT_SNAPSHOT_GUI_PYTHON` override to force a specific interpreter for GUI launch.
+
+* Improve GUI launch failure reporting to show attempted interpreters and per-runtime diagnostics when tkinter is unavailable or runtime crashes occur.
+
 v1.0.31 (2026-03-05)
 
 * Harden `git-snapshot compare --gui` launch failure handling so Python/Tk crashes (including macOS runtime mismatch aborts) are reported as actionable `git-snapshot` errors instead of raw shell `Abort trap` output.

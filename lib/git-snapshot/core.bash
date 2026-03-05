@@ -2366,8 +2366,19 @@ _git_snapshot_compare_launch_gui() {
   local selection_mode="$3"
   local repo_filter="$4"
   local show_all="$5"
+  local requested_python="${GIT_SNAPSHOT_GUI_PYTHON:-}"
   local gui_output=""
   local gui_status=0
+  local gui_python=""
+  local found_python="false"
+  local runtime_error_count=0
+  local i=0
+  local line=""
+  local -a gui_python_candidates=()
+  local -a runtime_error_python=()
+  local -a runtime_error_status=()
+  local -a runtime_error_output=()
+  local -a tried_python=()
 
   local core_dir helpers_root gui_script snapshot_bin
   core_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -2380,43 +2391,95 @@ _git_snapshot_compare_launch_gui() {
     return 1
   fi
 
-  if ! command -v python3 >/dev/null 2>&1; then
-    _git_snapshot_ui_err "python3 is required for compare --gui."
-    return 1
+  if [[ -n "${requested_python}" ]]; then
+    gui_python_candidates+=("${requested_python}")
+  else
+    gui_python_candidates+=("python3" "/usr/bin/python3" "/opt/homebrew/bin/python3" "python")
   fi
 
-  gui_output="$(python3 "${gui_script}" \
-    --root-repo "${root_repo}" \
-    --snapshot-id "${snapshot_id}" \
-    --selection-mode "${selection_mode}" \
-    --repo-filter "${repo_filter}" \
-    --show-all "${show_all}" \
-    --git-snapshot-bin "${snapshot_bin}" 2>&1)" || gui_status=$?
-
-  if [[ "${gui_status}" -ne 0 ]]; then
-    if [[ "${gui_status}" -ge 128 ]] || [[ "${gui_output}" == *"required, have instead"* ]]; then
-      _git_snapshot_ui_err "compare --gui crashed before opening the UI."
-      _git_snapshot_ui_err "Your current python3/tkinter runtime appears incompatible with this macOS environment."
-      _git_snapshot_ui_err "Try another python3 (for example, a system/Homebrew build with working tkinter)."
-      if [[ -n "${gui_output}" ]]; then
-        _git_snapshot_ui_err "python3 diagnostics:"
-        while IFS= read -r line; do
-          _git_snapshot_ui_err "  ${line}"
-        done <<< "${gui_output}"
+  for gui_python in "${gui_python_candidates[@]}"; do
+    if [[ "${gui_python}" == */* ]]; then
+      if [[ ! -x "${gui_python}" ]]; then
+        continue
       fi
-      return 1
+    else
+      if ! command -v "${gui_python}" >/dev/null 2>&1; then
+        continue
+      fi
+    fi
+
+    found_python="true"
+    tried_python+=("${gui_python}")
+    gui_status=0
+    gui_output="$("${gui_python}" "${gui_script}" \
+      --root-repo "${root_repo}" \
+      --snapshot-id "${snapshot_id}" \
+      --selection-mode "${selection_mode}" \
+      --repo-filter "${repo_filter}" \
+      --show-all "${show_all}" \
+      --git-snapshot-bin "${snapshot_bin}" 2>&1)" || gui_status=$?
+
+    if [[ "${gui_status}" -eq 0 ]]; then
+      if [[ -n "${gui_output}" ]]; then
+        printf "%s\n" "${gui_output}"
+      fi
+      return 0
+    fi
+
+    if [[ "${gui_status}" -ge 128 ]] || \
+       [[ "${gui_output}" == *"required, have instead"* ]] || \
+       [[ "${gui_output}" == *"No module named '_tkinter'"* ]] || \
+       [[ "${gui_output}" == *"No module named \"_tkinter\""* ]]; then
+      runtime_error_python+=("${gui_python}")
+      runtime_error_status+=("${gui_status}")
+      runtime_error_output+=("${gui_output}")
+      runtime_error_count=$((runtime_error_count + 1))
+      if [[ -n "${requested_python}" ]]; then
+        break
+      fi
+      continue
     fi
 
     if [[ -n "${gui_output}" ]]; then
       printf "%s\n" "${gui_output}" >&2
     fi
     return "${gui_status}"
+  done
+
+  if [[ "${found_python}" != "true" ]]; then
+    if [[ -n "${requested_python}" ]]; then
+      _git_snapshot_ui_err "GIT_SNAPSHOT_GUI_PYTHON is set but not executable: ${requested_python}"
+    else
+      _git_snapshot_ui_err "python3 is required for compare --gui."
+      _git_snapshot_ui_err "No usable Python interpreter found in: python3, /usr/bin/python3, /opt/homebrew/bin/python3, python"
+    fi
+    return 1
   fi
 
-  if [[ -n "${gui_output}" ]]; then
-    printf "%s\n" "${gui_output}"
+  _git_snapshot_ui_err "compare --gui crashed before opening the UI."
+  _git_snapshot_ui_err "No compatible Python/Tk runtime was found."
+
+  if [[ "${#tried_python[@]}" -gt 0 ]]; then
+    _git_snapshot_ui_err "Interpreters tried:"
+    for gui_python in "${tried_python[@]}"; do
+      _git_snapshot_ui_err "  ${gui_python}"
+    done
   fi
-  return 0
+
+  if [[ "${runtime_error_count}" -gt 0 ]]; then
+    _git_snapshot_ui_err "runtime diagnostics:"
+    for ((i=0; i<runtime_error_count; i++)); do
+      _git_snapshot_ui_err "  ${runtime_error_python[${i}]} (exit ${runtime_error_status[${i}]})"
+      if [[ -n "${runtime_error_output[${i}]}" ]]; then
+        while IFS= read -r line; do
+          _git_snapshot_ui_err "    ${line}"
+        done <<< "${runtime_error_output[${i}]}"
+      fi
+    done
+  fi
+
+  _git_snapshot_ui_err "Set GIT_SNAPSHOT_GUI_PYTHON to a Python interpreter with a working tkinter GUI runtime."
+  return 1
 }
 
 _git_snapshot_cmd_compare() {
