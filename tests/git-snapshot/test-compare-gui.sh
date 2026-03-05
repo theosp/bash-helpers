@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/../helpers/assertions.bash"
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/../helpers/fixtures.bash"
+
+git_snapshot_test_setup_sandbox
+root_repo="$(git_snapshot_test_make_nested_fixture)"
+
+printf "progress-staged\n" >> "${root_repo}/root.txt"
+git -C "${root_repo}" add root.txt
+
+create_output="$(cd "${root_repo}" && git_snapshot_test_cmd create gui-compare-progress)"
+snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${create_output}")"
+assert_eq "gui-compare-progress" "${snapshot_id}" "gui compare snapshot id should be preserved"
+
+set +e
+incompatible_output="$(cd "${root_repo}" && GIT_SNAPSHOT_GUI_TEST_MODE=1 git_snapshot_test_cmd compare "${snapshot_id}" --gui --porcelain 2>&1)"
+incompatible_code=$?
+set -e
+assert_exit_code 1 "${incompatible_code}" "compare --gui should reject --porcelain"
+assert_contains "compare --gui is incompatible with --porcelain." "${incompatible_output}" "compare --gui should explain porcelain incompatibility"
+
+gui_default_output="$(cd "${root_repo}" && GIT_SNAPSHOT_GUI_TEST_MODE=1 git_snapshot_test_cmd compare "${snapshot_id}" --gui)"
+assert_contains "GUI_TEST snapshot_id=${snapshot_id}" "${gui_default_output}" "gui test mode should expose selected snapshot id"
+assert_contains "show_all=false" "${gui_default_output}" "default gui compare should keep unresolved-only visibility"
+assert_contains "rows=0" "${gui_default_output}" "default gui compare should hide resolved rows"
+
+gui_diff_output="$(cd "${root_repo}" && GIT_SNAPSHOT_GUI_TEST_MODE=1 git_snapshot_test_cmd compare "${snapshot_id}" --diff --gui 2>&1)"
+assert_contains "compare --gui ignores --diff" "${gui_diff_output}" "gui compare should warn that --diff is ignored"
+assert_contains "GUI_TEST snapshot_id=${snapshot_id}" "${gui_diff_output}" "gui compare should still execute when --diff is also passed"
+
+gui_all_output="$(cd "${root_repo}" && GIT_SNAPSHOT_GUI_TEST_MODE=1 git_snapshot_test_cmd compare "${snapshot_id}" --repo . --all --gui)"
+assert_contains "GUI_TEST snapshot_id=${snapshot_id}" "${gui_all_output}" "gui --all test mode should expose selected snapshot id"
+assert_contains "show_all=true" "${gui_all_output}" "gui --all should propagate all-status visibility"
+assert_contains "rows=1" "${gui_all_output}" "gui --all should surface resolved rows"
+
+root_repo_basename="$(basename "${root_repo}")"
+gui_alias_output="$(cd "${root_repo}" && GIT_SNAPSHOT_GUI_TEST_MODE=1 git_snapshot_test_cmd compare "${snapshot_id}" --repo "${root_repo_basename}" --all --gui)"
+assert_contains "show_all=true" "${gui_alias_output}" "gui mode should preserve --all with root repo alias"
+assert_contains "rows=1" "${gui_alias_output}" "root repo alias should normalize to --repo . in gui mode"

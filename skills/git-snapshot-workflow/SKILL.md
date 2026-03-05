@@ -53,6 +53,7 @@ Follow this sequence and report each step.
   - default compare output is unresolved-only
   - use `--all` when you need resolved rows too
   - use `--diff` when you need inline unified diffs for unresolved diverged files
+  - use `--gui` for visual browse/refresh and per-file patch stitching via external diff tools
   - compare is diagnostic and returns `0` on successful execution
 
 3. Restore snapshot (only on explicit user restore intent)

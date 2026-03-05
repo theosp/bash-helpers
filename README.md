@@ -229,7 +229,7 @@ Exit codes:
 `--files` includes captured file inventories and collision file details (implies `--details`).
 `--all-repos` includes clean repos in summary output.
 
-### `git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--porcelain]`
+### `git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--gui] [--porcelain]`
 
 Compares current progress against snapshot-captured work items.
 
@@ -243,6 +243,19 @@ Default behavior:
 
 Use `--all` to include resolved rows.
 Use `--diff` to include inline unified diffs for `unresolved_diverged` rows.
+Use `--gui` to launch a visual compare browser with per-file diff preview and external patching via Meld/FileMerge/VS Code.
+`--gui` cannot be combined with `--porcelain`.
+If `--gui` and `--diff` are both passed, compare warns and ignores `--diff` (GUI renders per-file diffs internally).
+
+GUI notes:
+- Refresh reruns compare and reloads rows/counts.
+- Snapshot-side file is materialized on demand per selected file (no full snapshot tree reconstruction).
+- External diff launch order is snapshot-left/current-right (Meld contract):
+  - `meld "<snapshot_tmp_file>" "<current_file>"`
+- Tool fallback order for "Open in Meld":
+  1. `meld`
+  2. `opendiff`
+  3. `code --diff`
 
 Status model:
 - `resolved_committed`: snapshot target matches `HEAD` and current working tree

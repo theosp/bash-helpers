@@ -32,7 +32,7 @@ Usage
   git-snapshot list [--include-auto] [--porcelain]
   git-snapshot inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--name-only|--stat|--diff] [--porcelain]
   git-snapshot restore-check <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]
-  git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--porcelain]
+  git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--gui] [--porcelain]
   git-snapshot restore <snapshot_id> [--on-conflict <reject|rollback>] [--porcelain]
   git-snapshot delete <snapshot_id>
 
@@ -140,7 +140,7 @@ restore-check
   - 3 : compatibility issues found
   - 1 : usage/runtime error
 
-compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--porcelain]
+compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--gui] [--porcelain]
   Compares current workspace progress against snapshot-captured work items.
   Default compare scope:
   - files touched by snapshot staged/unstaged/untracked bundles
@@ -162,6 +162,7 @@ compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--porcelain]
   - `--repo <rel_path>` : compare one snapshot repo path
   - `--all`             : include resolved items in output (default is unresolved only)
   - `--diff`            : include unified diffs for `unresolved_diverged` rows
+  - `--gui`             : launch visual compare UI (incompatible with `--porcelain`)
   - `--porcelain`       : stable machine output (`compare_target` / `compare_file` / `compare_summary`)
   Exit codes:
   - 0 : compare completed
@@ -233,6 +234,7 @@ Deep inspection:
   git-snapshot compare before-rebase
   git-snapshot compare before-rebase --all
   git-snapshot compare before-rebase --diff
+  git-snapshot compare before-rebase --gui
   git-snapshot compare before-rebase --porcelain
 
 Restore:
@@ -2358,6 +2360,38 @@ _git_snapshot_compare_engine() {
   return 0
 }
 
+_git_snapshot_compare_launch_gui() {
+  local root_repo="$1"
+  local snapshot_id="$2"
+  local selection_mode="$3"
+  local repo_filter="$4"
+  local show_all="$5"
+
+  local core_dir helpers_root gui_script snapshot_bin
+  core_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+  helpers_root="$(cd "${core_dir}/../.." && pwd -P)"
+  gui_script="${helpers_root}/tools/git-snapshot-compare-gui.py"
+  snapshot_bin="${helpers_root}/bin/git-snapshot"
+
+  if [[ ! -f "${gui_script}" ]]; then
+    _git_snapshot_ui_err "GUI script not found: ${gui_script}"
+    return 1
+  fi
+
+  if ! command -v python3 >/dev/null 2>&1; then
+    _git_snapshot_ui_err "python3 is required for compare --gui."
+    return 1
+  fi
+
+  python3 "${gui_script}" \
+    --root-repo "${root_repo}" \
+    --snapshot-id "${snapshot_id}" \
+    --selection-mode "${selection_mode}" \
+    --repo-filter "${repo_filter}" \
+    --show-all "${show_all}" \
+    --git-snapshot-bin "${snapshot_bin}"
+}
+
 _git_snapshot_cmd_compare() {
   local root_repo="$1"
   shift
@@ -2367,6 +2401,7 @@ _git_snapshot_cmd_compare() {
   local porcelain="false"
   local show_all="false"
   local show_diff="false"
+  local show_gui="false"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -2386,6 +2421,9 @@ _git_snapshot_cmd_compare() {
         ;;
       --diff)
         show_diff="true"
+        ;;
+      --gui)
+        show_gui="true"
         ;;
       -* )
         _git_snapshot_ui_err "Unknown option for compare: $1"
@@ -2411,7 +2449,28 @@ _git_snapshot_cmd_compare() {
     fi
   fi
 
+  if [[ "${show_gui}" == "true" && "${porcelain}" == "true" ]]; then
+    _git_snapshot_ui_err "compare --gui is incompatible with --porcelain."
+    return 1
+  fi
+
+  if [[ "${show_gui}" == "true" && "${show_diff}" == "true" ]]; then
+    _git_snapshot_ui_warn "compare --gui ignores --diff (GUI renders per-file diffs internally)."
+    show_diff="false"
+  fi
+
   _git_snapshot_resolve_compare_target "${root_repo}" "${snapshot_id}" || return 1
+
+  if [[ "${show_gui}" == "true" ]]; then
+    _git_snapshot_compare_launch_gui \
+      "${root_repo}" \
+      "${GSN_COMPARE_SNAPSHOT_ID}" \
+      "${GSN_COMPARE_SELECTION_MODE}" \
+      "${repo_filter}" \
+      "${show_all}"
+    return $?
+  fi
+
   _git_snapshot_compare_engine \
     "${root_repo}" \
     "${GSN_COMPARE_SNAPSHOT_ID}" \

@@ -27,7 +27,7 @@ assert_contains "git-snapshot inspect <snapshot_id>" "${help_output}" "help shou
 assert_contains "--name-only|--stat|--diff" "${help_output}" "help should document inspect render flags"
 assert_contains "\`--stat\`      : git apply --stat summary (default: on)" "${help_output}" "help should label inspect default render mode"
 assert_contains "git-snapshot restore-check <snapshot_id>" "${help_output}" "help should document restore-check command"
-assert_contains "git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--porcelain]" "${help_output}" "help should document compare command"
+assert_contains "git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--gui] [--porcelain]" "${help_output}" "help should document compare command"
 assert_not_contains "git-snapshot verify" "${help_output}" "help should not document removed verify command"
 assert_not_contains "debug-dirty" "${help_output}" "help should not document removed debug-dirty command"
 assert_not_contains "--assert-equal" "${help_output}" "help should not mention removed compare assert mode"

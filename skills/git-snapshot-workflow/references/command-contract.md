@@ -64,7 +64,7 @@
     - `3`: compatibility issues found
     - `1`: usage/runtime error
 
-- `git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--porcelain]`
+- `git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--gui] [--porcelain]`
   - Snapshot progress engine over snapshot-captured files only.
   - Optional `snapshot_id`:
     - when omitted, select latest `origin=user` snapshot from full shared-folder registry
@@ -80,7 +80,15 @@
     - default: show unresolved rows only
     - `--all`: show resolved and unresolved rows
     - `--diff`: include unified diffs for `unresolved_diverged` rows (human output)
+    - `--gui`: launch visual compare browser (file tree + diff preview + external diff action)
     - `--repo <root-folder-name>` normalizes to `--repo .`
+    - `--gui` is incompatible with `--porcelain`
+    - passing `--gui` and `--diff` together warns and ignores `--diff`
+  - GUI tool behavior:
+    - external diff tool order: `meld`, then `opendiff`, then `code --diff`
+    - external launch order is fixed as snapshot-left/current-right:
+      `meld "<snapshot_tmp_file>" "<current_file>"`
+    - GUI refresh reruns compare and updates visible rows
   - Default compare is diagnostic and exits `0` on successful execution.
   - Porcelain rows:
     - `compare_target`: selected snapshot metadata (`selected_snapshot_id`,

@@ -1,3 +1,13 @@
+v1.0.30 (2026-03-05)
+
+* Add `git-snapshot compare --gui` for visual browsing with per-file diff preview and external diff launch integration (`meld`, `opendiff`, `code --diff`).
+
+* Enforce compare GUI flag contract rules:
+  - `--gui` is incompatible with `--porcelain`
+  - `--gui` warns and ignores `--diff` because GUI renders file diffs directly.
+
+* Add GUI compare implementation and regression coverage (`tools/git-snapshot-compare-gui.py`, `tests/git-snapshot/test-compare-gui.sh`) and update help/docs/skill command contract references for the new flag.
+
 v1.0.29 (2026-03-05)
 
 * Add `git-snapshot compare --repo <root-folder-name>` normalization so passing the current root folder name is treated as `--repo .`.
