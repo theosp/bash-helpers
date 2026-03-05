@@ -1,3 +1,13 @@
+v1.0.33 (2026-03-05)
+
+* Add a `compare --gui` runtime pre-check that validates `tkinter` GUI readiness by creating a hidden Tk window before launching the browser.
+
+* When GUI prerequisites are missing, print a persistent setup checklist (Homebrew `tcl-tk` + pyenv rebuild flow) so environment recovery is self-serve on new machines.
+
+* Keep interpreter fallback selection (`python3`, `/usr/bin/python3`, `/opt/homebrew/bin/python3`, `python`) and `GIT_SNAPSHOT_GUI_PYTHON` override semantics, with pre-check/launch stage diagnostics in failure output.
+
+* Update GUI compare docs/contracts and regression test expectations for setup-help output.
+
 v1.0.32 (2026-03-05)
 
 * Add `git-snapshot compare --gui` Python interpreter fallback resolution:

@@ -2360,6 +2360,34 @@ _git_snapshot_compare_engine() {
   return 0
 }
 
+_git_snapshot_compare_gui_runtime_error() {
+  local status="$1"
+  local output="$2"
+
+  if [[ "${status}" -ge 128 ]] || \
+     [[ "${output}" == *"required, have instead"* ]] || \
+     [[ "${output}" == *"No module named '_tkinter'"* ]] || \
+     [[ "${output}" == *"No module named \"_tkinter\""* ]] || \
+     [[ "${output}" == *"No module named 'tkinter'"* ]] || \
+     [[ "${output}" == *"No module named \"tkinter\""* ]]; then
+    return 0
+  fi
+  return 1
+}
+
+_git_snapshot_compare_print_gui_setup_help() {
+  _git_snapshot_ui_err "GUI setup checklist (macOS + pyenv):"
+  _git_snapshot_ui_err "  1) brew install tcl-tk"
+  _git_snapshot_ui_err "  2) export PATH=\"\$(brew --prefix tcl-tk)/bin:\$PATH\""
+  _git_snapshot_ui_err "  3) export LDFLAGS=\"-L\$(brew --prefix tcl-tk)/lib\""
+  _git_snapshot_ui_err "  4) export CPPFLAGS=\"-I\$(brew --prefix tcl-tk)/include\""
+  _git_snapshot_ui_err "  5) export PKG_CONFIG_PATH=\"\$(brew --prefix tcl-tk)/lib/pkgconfig\""
+  _git_snapshot_ui_err "  6) export PYTHON_CONFIGURE_OPTS=\"--enable-framework\""
+  _git_snapshot_ui_err "  7) pyenv install 3.11.11 && pyenv local 3.11.11 && pyenv rehash"
+  _git_snapshot_ui_err "  8) python3 -m tkinter"
+  _git_snapshot_ui_err "  9) GIT_SNAPSHOT_GUI_PYTHON=\"\$(pyenv which python3)\" git-snapshot compare --gui"
+}
+
 _git_snapshot_compare_launch_gui() {
   local root_repo="$1"
   local snapshot_id="$2"
@@ -2367,14 +2395,20 @@ _git_snapshot_compare_launch_gui() {
   local repo_filter="$4"
   local show_all="$5"
   local requested_python="${GIT_SNAPSHOT_GUI_PYTHON:-}"
+  local precheck_required="true"
+  local precheck_script=$'import tkinter as tk\nroot = tk.Tk()\nroot.withdraw()\nroot.destroy()\nprint("TK_OK")'
+  local precheck_output=""
+  local precheck_status=0
   local gui_output=""
   local gui_status=0
   local gui_python=""
   local found_python="false"
   local runtime_error_count=0
   local i=0
+  local stage=""
   local line=""
   local -a gui_python_candidates=()
+  local -a runtime_error_stage=()
   local -a runtime_error_python=()
   local -a runtime_error_status=()
   local -a runtime_error_output=()
@@ -2397,6 +2431,12 @@ _git_snapshot_compare_launch_gui() {
     gui_python_candidates+=("python3" "/usr/bin/python3" "/opt/homebrew/bin/python3" "python")
   fi
 
+  if [[ "${GIT_SNAPSHOT_GUI_TEST_MODE:-0}" == "1" ]] || \
+     [[ "${GIT_SNAPSHOT_GUI_FORCE_ABORT:-0}" == "1" ]] || \
+     [[ "${GIT_SNAPSHOT_GUI_SKIP_PRECHECK:-0}" == "1" ]]; then
+    precheck_required="false"
+  fi
+
   for gui_python in "${gui_python_candidates[@]}"; do
     if [[ "${gui_python}" == */* ]]; then
       if [[ ! -x "${gui_python}" ]]; then
@@ -2410,6 +2450,23 @@ _git_snapshot_compare_launch_gui() {
 
     found_python="true"
     tried_python+=("${gui_python}")
+
+    if [[ "${precheck_required}" == "true" ]]; then
+      precheck_status=0
+      precheck_output="$("${gui_python}" -c "${precheck_script}" 2>&1)" || precheck_status=$?
+      if [[ "${precheck_status}" -ne 0 ]]; then
+        runtime_error_stage+=("precheck")
+        runtime_error_python+=("${gui_python}")
+        runtime_error_status+=("${precheck_status}")
+        runtime_error_output+=("${precheck_output}")
+        runtime_error_count=$((runtime_error_count + 1))
+        if [[ -n "${requested_python}" ]]; then
+          break
+        fi
+        continue
+      fi
+    fi
+
     gui_status=0
     gui_output="$("${gui_python}" "${gui_script}" \
       --root-repo "${root_repo}" \
@@ -2426,10 +2483,8 @@ _git_snapshot_compare_launch_gui() {
       return 0
     fi
 
-    if [[ "${gui_status}" -ge 128 ]] || \
-       [[ "${gui_output}" == *"required, have instead"* ]] || \
-       [[ "${gui_output}" == *"No module named '_tkinter'"* ]] || \
-       [[ "${gui_output}" == *"No module named \"_tkinter\""* ]]; then
+    if _git_snapshot_compare_gui_runtime_error "${gui_status}" "${gui_output}"; then
+      runtime_error_stage+=("launch")
       runtime_error_python+=("${gui_python}")
       runtime_error_status+=("${gui_status}")
       runtime_error_output+=("${gui_output}")
@@ -2469,7 +2524,8 @@ _git_snapshot_compare_launch_gui() {
   if [[ "${runtime_error_count}" -gt 0 ]]; then
     _git_snapshot_ui_err "runtime diagnostics:"
     for ((i=0; i<runtime_error_count; i++)); do
-      _git_snapshot_ui_err "  ${runtime_error_python[${i}]} (exit ${runtime_error_status[${i}]})"
+      stage="${runtime_error_stage[${i}]}"
+      _git_snapshot_ui_err "  ${runtime_error_python[${i}]} (${stage}, exit ${runtime_error_status[${i}]})"
       if [[ -n "${runtime_error_output[${i}]}" ]]; then
         while IFS= read -r line; do
           _git_snapshot_ui_err "    ${line}"
@@ -2478,6 +2534,7 @@ _git_snapshot_compare_launch_gui() {
     done
   fi
 
+  _git_snapshot_compare_print_gui_setup_help
   _git_snapshot_ui_err "Set GIT_SNAPSHOT_GUI_PYTHON to a Python interpreter with a working tkinter GUI runtime."
   return 1
 }

@@ -85,6 +85,10 @@
     - `--gui` is incompatible with `--porcelain`
     - passing `--gui` and `--diff` together warns and ignores `--diff`
   - GUI tool behavior:
+    - pre-check runs before launch: interpreter must successfully create/close a hidden `tkinter` window
+    - default interpreter order: `python3`, `/usr/bin/python3`, `/opt/homebrew/bin/python3`, `python`
+    - `GIT_SNAPSHOT_GUI_PYTHON` overrides interpreter selection
+    - if no compatible runtime exists, compare prints setup guidance (pyenv + Homebrew `tcl-tk`)
     - external diff tool order: `meld`, then `opendiff`, then `code --diff`
     - external launch order is fixed as snapshot-left/current-right:
       `meld "<snapshot_tmp_file>" "<current_file>"`

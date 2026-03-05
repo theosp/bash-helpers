@@ -36,6 +36,9 @@ gui_abort_code=$?
 set -e
 assert_exit_code 1 "${gui_abort_code}" "compare --gui should convert python aborts into a clean failure"
 assert_contains "compare --gui crashed before opening the UI." "${gui_abort_output}" "compare --gui should report launcher crash in plain language"
+assert_contains "GUI setup checklist (macOS + pyenv):" "${gui_abort_output}" "compare --gui should print setup help when no usable GUI runtime exists"
+assert_contains "brew install tcl-tk" "${gui_abort_output}" "compare --gui setup help should include tcl-tk install guidance"
+assert_contains 'GIT_SNAPSHOT_GUI_PYTHON="$(pyenv which python3)" git-snapshot compare --gui' "${gui_abort_output}" "compare --gui setup help should include explicit interpreter override guidance"
 assert_not_contains "Abort trap: 6" "${gui_abort_output}" "compare --gui should suppress raw shell abort output"
 
 gui_diff_output="$(cd "${root_repo}" && GIT_SNAPSHOT_GUI_TEST_MODE=1 git_snapshot_test_cmd compare "${snapshot_id}" --diff --gui 2>&1)"

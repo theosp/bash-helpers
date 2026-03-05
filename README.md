@@ -250,6 +250,10 @@ If `--gui` and `--diff` are both passed, compare warns and ignores `--diff` (GUI
 GUI notes:
 - Refresh reruns compare and reloads rows/counts.
 - Snapshot-side file is materialized on demand per selected file (no full snapshot tree reconstruction).
+- Compare pre-checks GUI runtime readiness by attempting a hidden `tkinter` window before launch.
+- Interpreter selection order for `--gui`: `python3`, `/usr/bin/python3`, `/opt/homebrew/bin/python3`, `python`.
+- Set `GIT_SNAPSHOT_GUI_PYTHON` to force a specific interpreter.
+- If no compatible runtime exists, compare prints a pyenv/Homebrew Tcl/Tk setup checklist.
 - External diff launch order is snapshot-left/current-right (Meld contract):
   - `meld "<snapshot_tmp_file>" "<current_file>"`
 - Tool fallback order for "Open in Meld":
