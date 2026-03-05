@@ -1,3 +1,16 @@
+v1.0.34 (2026-03-05)
+
+* Replace `git-snapshot compare --gui` Python/Tk launcher with a Node.js implementation that serves a local browser UI (no tkinter/Tcl/Tk dependency).
+
+* Keep GUI compare behaviors:
+  - unresolved/all visibility parity with compare porcelain
+  - on-demand snapshot-side file materialization for preview and external diff
+  - external diff launch order: `meld`, then `opendiff`, then `code --diff`.
+
+* Update GUI launcher error handling to require `node` and report node diagnostics on launcher crashes.
+
+* Refresh docs/contracts and GUI regression assertions for the Node-based runtime path.
+
 v1.0.33 (2026-03-05)
 
 * Add a `compare --gui` runtime pre-check that validates `tkinter` GUI readiness by creating a hidden Tk window before launching the browser.

@@ -243,17 +243,15 @@ Default behavior:
 
 Use `--all` to include resolved rows.
 Use `--diff` to include inline unified diffs for `unresolved_diverged` rows.
-Use `--gui` to launch a visual compare browser with per-file diff preview and external patching via Meld/FileMerge/VS Code.
+Use `--gui` to launch a visual compare browser (Node-based local web UI) with per-file diff preview and external patching via Meld/FileMerge/VS Code.
 `--gui` cannot be combined with `--porcelain`.
 If `--gui` and `--diff` are both passed, compare warns and ignores `--diff` (GUI renders per-file diffs internally).
 
 GUI notes:
 - Refresh reruns compare and reloads rows/counts.
 - Snapshot-side file is materialized on demand per selected file (no full snapshot tree reconstruction).
-- Compare pre-checks GUI runtime readiness by attempting a hidden `tkinter` window before launch.
-- Interpreter selection order for `--gui`: `python3`, `/usr/bin/python3`, `/opt/homebrew/bin/python3`, `python`.
-- Set `GIT_SNAPSHOT_GUI_PYTHON` to force a specific interpreter.
-- If no compatible runtime exists, compare prints a pyenv/Homebrew Tcl/Tk setup checklist.
+- Runtime dependency is `node` (no Python/Tk dependency).
+- GUI opens in your default browser and runs from a local `127.0.0.1` server started by the command.
 - External diff launch order is snapshot-left/current-right (Meld contract):
   - `meld "<snapshot_tmp_file>" "<current_file>"`
 - Tool fallback order for "Open in Meld":

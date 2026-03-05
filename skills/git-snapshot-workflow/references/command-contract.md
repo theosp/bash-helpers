@@ -85,14 +85,12 @@
     - `--gui` is incompatible with `--porcelain`
     - passing `--gui` and `--diff` together warns and ignores `--diff`
   - GUI tool behavior:
-    - pre-check runs before launch: interpreter must successfully create/close a hidden `tkinter` window
-    - default interpreter order: `python3`, `/usr/bin/python3`, `/opt/homebrew/bin/python3`, `python`
-    - `GIT_SNAPSHOT_GUI_PYTHON` overrides interpreter selection
-    - if no compatible runtime exists, compare prints setup guidance (pyenv + Homebrew `tcl-tk`)
+    - runtime dependency is `node` (no Python/Tk dependency)
+    - launches a local browser UI served on `127.0.0.1` by the command process
+    - refresh action reruns compare and updates visible rows
     - external diff tool order: `meld`, then `opendiff`, then `code --diff`
     - external launch order is fixed as snapshot-left/current-right:
       `meld "<snapshot_tmp_file>" "<current_file>"`
-    - GUI refresh reruns compare and updates visible rows
   - Default compare is diagnostic and exits `0` on successful execution.
   - Porcelain rows:
     - `compare_target`: selected snapshot metadata (`selected_snapshot_id`,
