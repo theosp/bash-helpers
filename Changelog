@@ -1,3 +1,12 @@
+v1.0.35 (2026-03-05)
+
+* Improve Node `compare --gui` responsiveness and behavior:
+  - add visible loading indicator for first-time file diff preview fetch
+  - cache compare rows server-side per GUI session (rerun only on explicit Refresh)
+  - cache per-file diff previews and external-diff materialization paths until Refresh.
+
+* Keep refresh semantics explicit: Refresh reruns compare, clears cached rows/diffs, and reloads the list.
+
 v1.0.34 (2026-03-05)
 
 * Replace `git-snapshot compare --gui` Python/Tk launcher with a Node.js implementation that serves a local browser UI (no tkinter/Tcl/Tk dependency).

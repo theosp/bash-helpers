@@ -248,10 +248,12 @@ Use `--gui` to launch a visual compare browser (Node-based local web UI) with pe
 If `--gui` and `--diff` are both passed, compare warns and ignores `--diff` (GUI renders per-file diffs internally).
 
 GUI notes:
-- Refresh reruns compare and reloads rows/counts.
+- Compare rows are loaded once and cached until you click Refresh.
+- Refresh reruns compare and resets the diff cache.
 - Snapshot-side file is materialized on demand per selected file (no full snapshot tree reconstruction).
 - Runtime dependency is `node` (no Python/Tk dependency).
 - GUI opens in your default browser and runs from a local `127.0.0.1` server started by the command.
+- First-time diff fetch for a file shows a loading indicator while preview is prepared.
 - External diff launch order is snapshot-left/current-right (Meld contract):
   - `meld "<snapshot_tmp_file>" "<current_file>"`
 - Tool fallback order for "Open in Meld":

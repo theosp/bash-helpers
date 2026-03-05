@@ -87,7 +87,9 @@
   - GUI tool behavior:
     - runtime dependency is `node` (no Python/Tk dependency)
     - launches a local browser UI served on `127.0.0.1` by the command process
-    - refresh action reruns compare and updates visible rows
+    - compare rows are cached per GUI session; changing focused files does not rerun compare
+    - refresh action reruns compare and resets GUI-side file-diff cache
+    - first-time per-file preview fetch shows a loading indicator while diff is prepared
     - external diff tool order: `meld`, then `opendiff`, then `code --diff`
     - external launch order is fixed as snapshot-left/current-right:
       `meld "<snapshot_tmp_file>" "<current_file>"`

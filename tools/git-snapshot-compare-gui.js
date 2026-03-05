@@ -82,6 +82,10 @@ function parsePorcelain(stdoutText) {
   };
 }
 
+function rowKey(repoRel, filePath) {
+  return `${repoRel}\t${filePath}`;
+}
+
 function loadCompareData(args) {
   const cmd = [args.gitSnapshotBin, "compare", args.snapshotId, "--porcelain"];
   if (args.repoFilter) cmd.push("--repo", args.repoFilter);
@@ -290,6 +294,7 @@ function htmlPage() {
     .row:hover { background: #f0eee3; }
     .row.active { background: #e5f2ef; border-left: 3px solid var(--accent); padding-left: 7px; }
     .status { color: var(--muted); }
+    .loading { color: var(--muted); font-style: italic; }
     pre { margin: 0; white-space: pre; min-height: 100%; }
     .empty { color: var(--muted); padding: 10px; }
   </style>
@@ -317,11 +322,33 @@ function htmlPage() {
     const openBtn = document.getElementById("openExternal");
     let rows = [];
     let selected = null;
+    let diffCache = new Map();
+    let selectionToken = 0;
 
-    async function loadData() {
-      const res = await fetch("/api/data");
+    function cacheKey(repo, file) {
+      return String(repo || "") + "\\t" + String(file || "");
+    }
+
+    function setDiffLoading(row) {
+      diffEl.classList.add("loading");
+      diffEl.textContent = "Loading diff for " + (row.repo || "") + "/" + (row.file || "") + "...";
+    }
+
+    function setDiffText(text) {
+      diffEl.classList.remove("loading");
+      diffEl.textContent = text;
+    }
+
+    async function loadData(forceRefresh) {
+      const suffix = forceRefresh ? "?force=1" : "";
+      const res = await fetch("/api/data" + suffix);
       const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to load compare data.");
+      }
       rows = data.rows || [];
+      diffCache = new Map();
+      selectionToken += 1;
       const t = data.targetFields || {};
       const s = data.summaryFields || {};
       metaEl.textContent = "Snapshot: " + (t.selected_snapshot_id || "?") +
@@ -334,7 +361,7 @@ function htmlPage() {
         " shown_files=" + (s.shown_files || "?");
       selected = null;
       openBtn.disabled = true;
-      diffEl.textContent = rows.length ? "Select a file to preview diff." : "No rows to display for current visibility filter.";
+      setDiffText(rows.length ? "Select a file to preview diff." : "No rows to display for current visibility filter.");
       renderList();
     }
 
@@ -370,9 +397,25 @@ function htmlPage() {
       rowNode.classList.add("active");
       selected = row;
       openBtn.disabled = false;
+      const key = cacheKey(row.repo, row.file);
+      if (diffCache.has(key)) {
+        setDiffText(diffCache.get(key));
+        return;
+      }
+
+      setDiffLoading(row);
+      const token = selectionToken + 1;
+      selectionToken = token;
       const q = new URLSearchParams({ repo: row.repo || "", file: row.file || "" });
       const res = await fetch("/api/diff?" + q.toString());
-      diffEl.textContent = await res.text();
+      const text = await res.text();
+      if (token !== selectionToken) return;
+      if (!res.ok) {
+        setDiffText(text || "Failed to load diff preview.");
+        return;
+      }
+      diffCache.set(key, text);
+      setDiffText(text);
     }
 
     async function openExternal() {
@@ -383,9 +426,19 @@ function htmlPage() {
       if (!data.ok) alert(data.error || "Failed to open external diff.");
     }
 
-    refreshBtn.onclick = () => loadData().catch(err => alert(String(err)));
+    refreshBtn.onclick = async () => {
+      refreshBtn.disabled = true;
+      openBtn.disabled = true;
+      try {
+        await loadData(true);
+      } catch (err) {
+        alert(String(err));
+      } finally {
+        refreshBtn.disabled = false;
+      }
+    };
     openBtn.onclick = () => openExternal().catch(err => alert(String(err)));
-    loadData().catch(err => { diffEl.textContent = String(err); });
+    loadData(false).catch(err => { setDiffText(String(err)); });
   </script>
 </body>
 </html>`;
@@ -424,6 +477,23 @@ function runTestMode(args) {
 
 function startServer(args) {
   const resolver = new SnapshotFileResolver(args.rootRepo, args.snapshotId);
+  const state = {
+    compareData: null,
+    compareLoadedAt: 0,
+    diffCache: new Map(),
+  };
+
+  function refreshCompareCache() {
+    state.compareData = loadCompareData(args);
+    state.compareLoadedAt = Date.now();
+    state.diffCache.clear();
+    return state.compareData;
+  }
+
+  function getCompareCache() {
+    if (!state.compareData) return refreshCompareCache();
+    return state.compareData;
+  }
 
   const server = http.createServer((req, res) => {
     try {
@@ -435,13 +505,15 @@ function startServer(args) {
         return;
       }
       if (req.method === "GET" && url.pathname === "/api/data") {
-        const data = loadCompareData(args);
+        const forceRefresh = url.searchParams.get("force") === "1";
+        const data = forceRefresh ? refreshCompareCache() : getCompareCache();
         json(res, 200, {
           targetFields: data.targetFields,
           rows: data.rows,
           summaryFields: data.summaryFields,
           repoFilter: args.repoFilter,
           showAll: args.showAll,
+          cacheLoadedAt: state.compareLoadedAt,
         });
         return;
       }
@@ -452,9 +524,28 @@ function startServer(args) {
           text(res, 400, "Missing repo/file query parameters.");
           return;
         }
+        const data = getCompareCache();
+        const key = rowKey(repoRel, filePath);
+        const known = data.rows.some((row) => rowKey(row.repo || "", row.file || "") === key);
+        if (!known) {
+          text(res, 404, "File is not part of the currently cached compare rows. Click Refresh.");
+          return;
+        }
+        const cached = state.diffCache.get(key);
+        if (cached) {
+          text(res, 200, cached.diffText);
+          return;
+        }
+
         const snapshotFile = resolver.materializeSnapshotFile(repoRel, filePath);
         const currentFile = resolver.currentFilePath(repoRel, filePath);
-        text(res, 200, buildUnifiedDiff(currentFile, snapshotFile, filePath));
+        const diffText = buildUnifiedDiff(currentFile, snapshotFile, filePath);
+        state.diffCache.set(key, {
+          diffText: diffText,
+          snapshotFile: snapshotFile,
+          currentFile: currentFile,
+        });
+        text(res, 200, diffText);
         return;
       }
       if (req.method === "POST" && url.pathname === "/api/open") {
@@ -469,8 +560,20 @@ function startServer(args) {
           json(res, 200, { ok: false, error: "No external diff tool found. Install meld, opendiff, or code." });
           return;
         }
-        const snapshotFile = resolver.materializeSnapshotFile(repoRel, filePath);
-        const currentFile = resolver.currentFilePath(repoRel, filePath);
+        const key = rowKey(repoRel, filePath);
+        let cached = state.diffCache.get(key);
+        if (!cached) {
+          const snapshotFile = resolver.materializeSnapshotFile(repoRel, filePath);
+          const currentFile = resolver.currentFilePath(repoRel, filePath);
+          cached = {
+            diffText: "",
+            snapshotFile: snapshotFile,
+            currentFile: currentFile,
+          };
+          state.diffCache.set(key, cached);
+        }
+        const snapshotFile = cached.snapshotFile;
+        const currentFile = cached.currentFile;
         ensureDir(path.dirname(currentFile));
         if (!fs.existsSync(currentFile)) fs.writeFileSync(currentFile, "", "utf8");
         launchExternalDiff(tool, snapshotFile, currentFile);
