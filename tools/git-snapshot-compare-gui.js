@@ -477,6 +477,7 @@ function runTestMode(args) {
 
 function startServer(args) {
   const resolver = new SnapshotFileResolver(args.rootRepo, args.snapshotId);
+  const sockets = new Set();
   const state = {
     compareData: null,
     compareLoadedAt: 0,
@@ -591,6 +592,10 @@ function startServer(args) {
       }
     }
   });
+  server.on("connection", (socket) => {
+    sockets.add(socket);
+    socket.on("close", () => sockets.delete(socket));
+  });
 
   return new Promise((resolve, reject) => {
     server.on("error", reject);
@@ -607,7 +612,7 @@ function startServer(args) {
       if (opener) console.log(`Opened in browser via: ${opener}`);
       else console.log(`Open URL manually in a browser.`);
       console.log(`Press Ctrl-C to stop the GUI server.`);
-      resolve(server);
+      resolve({ server, sockets });
     });
   });
 }
@@ -623,13 +628,29 @@ async function main() {
     return;
   }
 
-  const server = await startServer(args);
-  process.on("SIGINT", () => {
-    server.close(() => process.exit(130));
-  });
-  process.on("SIGTERM", () => {
-    server.close(() => process.exit(143));
-  });
+  const runtime = await startServer(args);
+  let shuttingDown = false;
+  let shutdownTimer = null;
+
+  function shutdown(exitCode) {
+    if (shuttingDown) {
+      for (const socket of runtime.sockets) socket.destroy();
+      process.exit(exitCode);
+      return;
+    }
+    shuttingDown = true;
+
+    runtime.server.close(() => process.exit(exitCode));
+    for (const socket of runtime.sockets) socket.destroy();
+
+    shutdownTimer = setTimeout(() => process.exit(exitCode), 400);
+    if (shutdownTimer && typeof shutdownTimer.unref === "function") {
+      shutdownTimer.unref();
+    }
+  }
+
+  process.on("SIGINT", () => shutdown(130));
+  process.on("SIGTERM", () => shutdown(143));
 }
 
 main().catch((err) => {
