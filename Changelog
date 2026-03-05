@@ -1,3 +1,11 @@
+v1.0.29 (2026-03-05)
+
+* Add `git-snapshot compare --repo <root-folder-name>` normalization so passing the current root folder name is treated as `--repo .`.
+
+* Simplify compare file rows by dropping `reason` from human and porcelain `compare_file` output, and bump compare summary contract marker to `contract_version=4`.
+
+* Align compare `--diff` unified diff orientation and refresh README/skill contract docs plus compare regression tests for the updated contract.
+
 v1.0.28 (2026-03-05)
 
 * Add `--diff` support to `git-snapshot compare` (human output):

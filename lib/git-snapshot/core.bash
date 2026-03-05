@@ -2087,8 +2087,8 @@ _git_snapshot_compare_render_file_diff() {
 
   local snapshot_abs="${snapshot_materialized_repo}/${file_path}"
   local current_abs="${current_materialized_repo}/${file_path}"
-  local snapshot_label="snapshot:${file_path}"
   local current_label="current:${file_path}"
+  local snapshot_label="snapshot:${file_path}"
 
   local snapshot_present="false"
   local snapshot_mode=""
@@ -2110,20 +2110,20 @@ _git_snapshot_compare_render_file_diff() {
   current_mode="${GSN_COMPARE_SIG_MODE:-missing}"
   current_hash="${GSN_COMPARE_SIG_HASH:-missing}"
 
-  printf "      signature: snapshot(mode=%s hash=%s) current(mode=%s hash=%s)\n" \
-    "${snapshot_mode}" \
-    "${snapshot_hash}" \
+  printf "      signature: current(mode=%s hash=%s) snapshot(mode=%s hash=%s)\n" \
     "${current_mode}" \
-    "${current_hash}" >> "${out_file}"
+    "${current_hash}" \
+    "${snapshot_mode}" \
+    "${snapshot_hash}" >> "${out_file}"
 
   diff_tmp="$(mktemp)"
 
   if [[ "${snapshot_present}" == "true" && "${current_present}" == "true" && -f "${snapshot_abs}" && -f "${current_abs}" ]]; then
-    diff -u --label "${snapshot_label}" --label "${current_label}" "${snapshot_abs}" "${current_abs}" > "${diff_tmp}" 2>/dev/null || true
+    diff -u --label "${current_label}" --label "${snapshot_label}" "${current_abs}" "${snapshot_abs}" > "${diff_tmp}" 2>/dev/null || true
   elif [[ "${snapshot_present}" != "true" && "${current_present}" == "true" && -f "${current_abs}" ]]; then
-    diff -u --label "${snapshot_label}" --label "${current_label}" /dev/null "${current_abs}" > "${diff_tmp}" 2>/dev/null || true
+    diff -u --label "${current_label}" --label "${snapshot_label}" "${current_abs}" /dev/null > "${diff_tmp}" 2>/dev/null || true
   elif [[ "${snapshot_present}" == "true" && "${current_present}" != "true" && -f "${snapshot_abs}" ]]; then
-    diff -u --label "${snapshot_label}" --label "${current_label}" "${snapshot_abs}" /dev/null > "${diff_tmp}" 2>/dev/null || true
+    diff -u --label "${current_label}" --label "${snapshot_label}" /dev/null "${snapshot_abs}" > "${diff_tmp}" 2>/dev/null || true
   else
     printf "      textual diff unavailable for non-regular file types.\n" >> "${out_file}"
   fi
@@ -2143,15 +2143,15 @@ _git_snapshot_compare_print_grouped_rows() {
   local show_diff="${3:-false}"
 
   local current_repo=""
-  local row_repo row_file row_status row_reason row_diff_file
+  local row_repo row_file row_status _row_reason row_diff_file
 
-  while IFS=$'\t' read -r row_repo row_file row_status row_reason row_diff_file; do
+  while IFS=$'\t' read -r row_repo row_file row_status _row_reason row_diff_file; do
     [[ -z "${row_repo}" ]] && continue
     if [[ "${current_repo}" != "${row_repo}" ]]; then
       current_repo="${row_repo}"
       printf "\nRepo: %s\n" "$(_git_snapshot_human_repo_label "${root_repo}" "${row_repo}")"
     fi
-    printf "  - %s [%s] %s\n" "${row_file}" "${row_status}" "${row_reason}"
+    printf "  - %s [%s]\n" "${row_file}" "${row_status}"
     if [[ "${show_diff}" == "true" && -n "${row_diff_file}" && -s "${row_diff_file}" ]]; then
       cat "${row_diff_file}"
     fi
@@ -2309,15 +2309,14 @@ _git_snapshot_compare_engine() {
   local unresolved_total=$((unresolved_missing + unresolved_diverged))
 
   if [[ "${porcelain}" == "true" ]]; then
-    local row_repo row_file row_status row_reason _row_diff_file safe_reason
-    while IFS=$'\t' read -r row_repo row_file row_status row_reason _row_diff_file; do
+    local row_repo row_file row_status _row_reason _row_diff_file
+    while IFS=$'\t' read -r row_repo row_file row_status _row_reason _row_diff_file; do
       [[ -z "${row_repo}" ]] && continue
-      safe_reason="$(_git_snapshot_compare_sanitize_porcelain_value "${row_reason}")"
-      printf "compare_file\tsnapshot_id=%s\trepo=%s\tfile=%s\tstatus=%s\treason=%s\n" \
-        "${snapshot_id}" "${row_repo}" "${row_file}" "${row_status}" "${safe_reason}"
+      printf "compare_file\tsnapshot_id=%s\trepo=%s\tfile=%s\tstatus=%s\n" \
+        "${snapshot_id}" "${row_repo}" "${row_file}" "${row_status}"
     done < "${rows_file}"
 
-    printf "compare_summary\tsnapshot_id=%s\trepos_checked=%s\tfiles_total=%s\tresolved_committed=%s\tresolved_uncommitted=%s\tunresolved_missing=%s\tunresolved_diverged=%s\tunresolved_total=%s\tshown_files=%s\tcontract_version=3\n" \
+    printf "compare_summary\tsnapshot_id=%s\trepos_checked=%s\tfiles_total=%s\tresolved_committed=%s\tresolved_uncommitted=%s\tunresolved_missing=%s\tunresolved_diverged=%s\tunresolved_total=%s\tshown_files=%s\tcontract_version=4\n" \
       "${snapshot_id}" "${repos_checked}" "${files_total}" "${resolved_committed}" "${resolved_uncommitted}" "${unresolved_missing}" "${unresolved_diverged}" "${unresolved_total}" "${shown_files}"
 
     rm -rf "${diff_store_dir}"
@@ -2403,6 +2402,14 @@ _git_snapshot_cmd_compare() {
     esac
     shift
   done
+
+  if [[ -n "${repo_filter}" ]]; then
+    local root_repo_basename
+    root_repo_basename="$(basename "${root_repo}")"
+    if [[ "${repo_filter}" == "${root_repo_basename}" ]]; then
+      repo_filter="."
+    fi
+  fi
 
   _git_snapshot_resolve_compare_target "${root_repo}" "${snapshot_id}" || return 1
   _git_snapshot_compare_engine \

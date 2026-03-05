@@ -28,14 +28,18 @@ assert_contains "Diff details: off (add --diff to include unified diffs for unre
 assert_contains "Compare: no unresolved snapshot work." "${compare_clean_output}" "snapshot-aligned state should have no unresolved rows"
 assert_contains "No rows to display for current visibility filter." "${compare_clean_output}" "default compare should hide resolved rows"
 
+root_repo_basename="$(basename "${root_repo}")"
+compare_root_alias_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${progress_snapshot_id}" --repo "${root_repo_basename}")"
+assert_contains "Compare: no unresolved snapshot work." "${compare_root_alias_output}" "root folder-name alias should normalize to --repo ."
+
 compare_all_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${progress_snapshot_id}" --repo . --all)"
 assert_contains "Rows shown: all statuses" "${compare_all_output}" "--all should include resolved rows"
 assert_contains "root.txt [resolved_uncommitted]" "${compare_all_output}" "--all should classify snapshot-aligned uncommitted work"
 
 compare_all_porcelain_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${progress_snapshot_id}" --repo . --all --porcelain)"
 assert_contains $'compare_target\tselected_snapshot_id='"${progress_snapshot_id}"$'\tselection_mode=explicit\tsnapshot_origin=user\tsnapshot_root=' "${compare_all_porcelain_output}" "compare porcelain should include target row"
-assert_contains $'compare_file\tsnapshot_id='"${progress_snapshot_id}"$'\trepo=.\tfile=root.txt\tstatus=resolved_uncommitted\treason=' "${compare_all_porcelain_output}" "compare porcelain should expose resolved_uncommitted status"
-assert_contains $'compare_summary\tsnapshot_id='"${progress_snapshot_id}"$'\trepos_checked=1\tfiles_total=1\tresolved_committed=0\tresolved_uncommitted=1\tunresolved_missing=0\tunresolved_diverged=0\tunresolved_total=0\tshown_files=1\tcontract_version=3' "${compare_all_porcelain_output}" "compare porcelain summary should expose v3 status counters"
+assert_contains $'compare_file\tsnapshot_id='"${progress_snapshot_id}"$'\trepo=.\tfile=root.txt\tstatus=resolved_uncommitted' "${compare_all_porcelain_output}" "compare porcelain should expose resolved_uncommitted status"
+assert_contains $'compare_summary\tsnapshot_id='"${progress_snapshot_id}"$'\trepos_checked=1\tfiles_total=1\tresolved_committed=0\tresolved_uncommitted=1\tunresolved_missing=0\tunresolved_diverged=0\tunresolved_total=0\tshown_files=1\tcontract_version=4' "${compare_all_porcelain_output}" "compare porcelain summary should expose v4 status counters"
 
 # Commit snapshot-aligned state and verify status transition to resolved_committed.
 git -C "${root_repo}" add root.txt
@@ -55,8 +59,8 @@ assert_contains "root.txt [unresolved_diverged]" "${compare_diverged_output}" "c
 
 compare_diverged_diff_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${progress_snapshot_id}" --repo . --diff)"
 assert_contains "Diff details: on (unresolved_diverged rows include unified diffs)" "${compare_diverged_diff_output}" "compare --diff should disclose enabled unified diffs"
-assert_contains "--- snapshot:root.txt" "${compare_diverged_diff_output}" "compare --diff should include snapshot label for unified diff"
-assert_contains "+++ current:root.txt" "${compare_diverged_diff_output}" "compare --diff should include current label for unified diff"
+assert_contains "--- current:root.txt" "${compare_diverged_diff_output}" "compare --diff should include current label as diff base"
+assert_contains "+++ snapshot:root.txt" "${compare_diverged_diff_output}" "compare --diff should include snapshot label as diff target"
 
 # Missing-path detection via untracked snapshot payload.
 printf "missing-target\n" > "${root_repo}/missing-target.txt"

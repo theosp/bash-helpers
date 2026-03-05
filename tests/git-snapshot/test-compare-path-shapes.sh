@@ -26,7 +26,7 @@ assert_contains "Compare: no unresolved snapshot work." "${dash_compare_output}"
 assert_contains "No rows to display for current visibility filter." "${dash_compare_output}" "clean snapshot scope should keep default unresolved view empty"
 
 dash_porcelain_output="$(cd "${repo}" && git_snapshot_test_cmd compare "${base_snapshot_id}" --repo . --porcelain)"
-assert_contains $'compare_summary\tsnapshot_id='"${base_snapshot_id}"$'\trepos_checked=1\tfiles_total=0\tresolved_committed=0\tresolved_uncommitted=0\tunresolved_missing=0\tunresolved_diverged=0\tunresolved_total=0\tshown_files=0\tcontract_version=3' "${dash_porcelain_output}" "dash path regression should still emit normal compare summary"
+assert_contains $'compare_summary\tsnapshot_id='"${base_snapshot_id}"$'\trepos_checked=1\tfiles_total=0\tresolved_committed=0\tresolved_uncommitted=0\tunresolved_missing=0\tunresolved_diverged=0\tunresolved_total=0\tshown_files=0\tcontract_version=4' "${dash_porcelain_output}" "dash path regression should still emit normal compare summary"
 assert_not_contains "compare_error" "${dash_porcelain_output}" "dash path regression should not emit compare_error rows"
 rm -f "${repo}/--dash-untracked.txt"
 

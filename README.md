@@ -238,6 +238,9 @@ Default behavior:
 - output shows unresolved rows only
 - exits `0` on successful completion
 
+`--repo` convenience:
+- passing the current root folder name is treated as `.` (for example from `/path/justdo-devops`, `--repo justdo-devops` == `--repo .`)
+
 Use `--all` to include resolved rows.
 Use `--diff` to include inline unified diffs for `unresolved_diverged` rows.
 
@@ -255,8 +258,8 @@ Human output discloses selected snapshot metadata and status totals.
 
 Porcelain rows:
 - `compare_target`: selected snapshot metadata + visibility mode
-- `compare_file`: one row per shown file with `status` and `reason`
-- `compare_summary`: totals and `contract_version=3`
+- `compare_file`: one row per shown file with `status`
+- `compare_summary`: totals and `contract_version=4`
 
 Exit codes:
 - `0`: compare completed

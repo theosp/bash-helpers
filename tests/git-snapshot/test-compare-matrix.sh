@@ -45,8 +45,8 @@ delete_diverged_output="$(cd "${repo_delete_case}" && git_snapshot_test_cmd comp
 assert_contains "delete-me.txt [unresolved_diverged]" "${delete_diverged_output}" "reintroduced file should diverge from deletion target"
 
 delete_diverged_porcelain="$(cd "${repo_delete_case}" && git_snapshot_test_cmd compare "${delete_snapshot_id}" --repo . --porcelain)"
-assert_contains $'compare_file\tsnapshot_id='"${delete_snapshot_id}"$'\trepo=.\tfile=delete-me.txt\tstatus=unresolved_diverged\treason=' "${delete_diverged_porcelain}" "porcelain should expose unresolved_diverged status"
-assert_contains $'compare_summary\tsnapshot_id='"${delete_snapshot_id}"$'\trepos_checked=1\tfiles_total=1\tresolved_committed=0\tresolved_uncommitted=0\tunresolved_missing=0\tunresolved_diverged=1\tunresolved_total=1\tshown_files=1\tcontract_version=3' "${delete_diverged_porcelain}" "porcelain summary should expose v3 unresolved counters"
+assert_contains $'compare_file\tsnapshot_id='"${delete_snapshot_id}"$'\trepo=.\tfile=delete-me.txt\tstatus=unresolved_diverged' "${delete_diverged_porcelain}" "porcelain should expose unresolved_diverged status"
+assert_contains $'compare_summary\tsnapshot_id='"${delete_snapshot_id}"$'\trepos_checked=1\tfiles_total=1\tresolved_committed=0\tresolved_uncommitted=0\tunresolved_missing=0\tunresolved_diverged=1\tunresolved_total=1\tshown_files=1\tcontract_version=4' "${delete_diverged_porcelain}" "porcelain summary should expose v4 unresolved counters"
 
 # 3) Missing repo path should map snapshot files to unresolved_missing rows.
 nested_root="$(git_snapshot_test_make_nested_fixture)"
@@ -59,7 +59,6 @@ assert_eq "matrix-repo-missing" "${nested_snapshot_id}" "repo-missing snapshot i
 rm -rf "${nested_root}/modules/sub1"
 repo_missing_compare_output="$(cd "${nested_root}" && git_snapshot_test_cmd compare "${nested_snapshot_id}" --repo modules/sub1)"
 assert_contains "sub1.txt [unresolved_missing]" "${repo_missing_compare_output}" "missing repo path should surface unresolved_missing rows"
-assert_contains "repo missing at modules/sub1" "${repo_missing_compare_output}" "missing repo rows should include explicit reason"
 
 # 4) No-user-snapshot failure path remains explicit.
 repo_auto_only="${TEST_REPOS_ROOT}/auto-only"
@@ -90,4 +89,4 @@ rename_compare_output="$(cd "${repo_rename_case}" && git_snapshot_test_cmd compa
 assert_contains "old.txt [unresolved_diverged]" "${rename_compare_output}" "reintroduced rename source should be unresolved_diverged"
 
 rename_porcelain_output="$(cd "${repo_rename_case}" && git_snapshot_test_cmd compare "${rename_snapshot_id}" --repo . --porcelain)"
-assert_contains $'compare_file\tsnapshot_id='"${rename_snapshot_id}"$'\trepo=.\tfile=old.txt\tstatus=unresolved_diverged\treason=' "${rename_porcelain_output}" "porcelain should expose unresolved_diverged for reintroduced rename source"
+assert_contains $'compare_file\tsnapshot_id='"${rename_snapshot_id}"$'\trepo=.\tfile=old.txt\tstatus=unresolved_diverged' "${rename_porcelain_output}" "porcelain should expose unresolved_diverged for reintroduced rename source"
