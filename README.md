@@ -100,6 +100,7 @@ Compare tracks only files touched by the snapshot bundles (staged/unstaged/untra
 - `unresolved_diverged`
 
 Default compare output shows unresolved rows only. Use `--all` to include resolved rows.
+Use `--diff` to include unified diffs for `unresolved_diverged` rows.
 
 When `snapshot_id` is omitted for compare:
 - the tool selects the latest `origin=user` snapshot from the entire shared-folder registry
@@ -228,7 +229,7 @@ Exit codes:
 `--files` includes captured file inventories and collision file details (implies `--details`).
 `--all-repos` includes clean repos in summary output.
 
-### `git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--porcelain]`
+### `git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--porcelain]`
 
 Compares current progress against snapshot-captured work items.
 
@@ -238,6 +239,7 @@ Default behavior:
 - exits `0` on successful completion
 
 Use `--all` to include resolved rows.
+Use `--diff` to include inline unified diffs for `unresolved_diverged` rows.
 
 Status model:
 - `resolved_committed`: snapshot target matches `HEAD` and current working tree

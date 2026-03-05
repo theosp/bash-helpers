@@ -32,7 +32,7 @@ Usage
   git-snapshot list [--include-auto] [--porcelain]
   git-snapshot inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--name-only|--stat|--diff] [--porcelain]
   git-snapshot restore-check <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]
-  git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--porcelain]
+  git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--porcelain]
   git-snapshot restore <snapshot_id> [--on-conflict <reject|rollback>] [--porcelain]
   git-snapshot delete <snapshot_id>
 
@@ -140,7 +140,7 @@ restore-check
   - 3 : compatibility issues found
   - 1 : usage/runtime error
 
-compare [snapshot_id] [--repo <rel_path>] [--all] [--porcelain]
+compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--porcelain]
   Compares current workspace progress against snapshot-captured work items.
   Default compare scope:
   - files touched by snapshot staged/unstaged/untracked bundles
@@ -161,6 +161,7 @@ compare [snapshot_id] [--repo <rel_path>] [--all] [--porcelain]
   Optional flags:
   - `--repo <rel_path>` : compare one snapshot repo path
   - `--all`             : include resolved items in output (default is unresolved only)
+  - `--diff`            : include unified diffs for `unresolved_diverged` rows
   - `--porcelain`       : stable machine output (`compare_target` / `compare_file` / `compare_summary`)
   Exit codes:
   - 0 : compare completed
@@ -231,6 +232,7 @@ Deep inspection:
   git-snapshot restore-check before-rebase --porcelain
   git-snapshot compare before-rebase
   git-snapshot compare before-rebase --all
+  git-snapshot compare before-rebase --diff
   git-snapshot compare before-rebase --porcelain
 
 Restore:
@@ -2077,20 +2079,82 @@ _git_snapshot_compare_classify_file() {
   GSN_COMPARE_FILE_REASON="snapshot target removes this path and HEAD matches"
 }
 
+_git_snapshot_compare_render_file_diff() {
+  local snapshot_materialized_repo="$1"
+  local current_materialized_repo="$2"
+  local file_path="$3"
+  local out_file="$4"
+
+  local snapshot_abs="${snapshot_materialized_repo}/${file_path}"
+  local current_abs="${current_materialized_repo}/${file_path}"
+  local snapshot_label="snapshot:${file_path}"
+  local current_label="current:${file_path}"
+
+  local snapshot_present="false"
+  local snapshot_mode=""
+  local snapshot_hash=""
+  local current_present="false"
+  local current_mode=""
+  local current_hash=""
+  local diff_tmp=""
+
+  : > "${out_file}"
+
+  _git_snapshot_compare_capture_fs_signature "${snapshot_materialized_repo}" "${file_path}"
+  snapshot_present="${GSN_COMPARE_SIG_PRESENT}"
+  snapshot_mode="${GSN_COMPARE_SIG_MODE:-missing}"
+  snapshot_hash="${GSN_COMPARE_SIG_HASH:-missing}"
+
+  _git_snapshot_compare_capture_fs_signature "${current_materialized_repo}" "${file_path}"
+  current_present="${GSN_COMPARE_SIG_PRESENT}"
+  current_mode="${GSN_COMPARE_SIG_MODE:-missing}"
+  current_hash="${GSN_COMPARE_SIG_HASH:-missing}"
+
+  printf "      signature: snapshot(mode=%s hash=%s) current(mode=%s hash=%s)\n" \
+    "${snapshot_mode}" \
+    "${snapshot_hash}" \
+    "${current_mode}" \
+    "${current_hash}" >> "${out_file}"
+
+  diff_tmp="$(mktemp)"
+
+  if [[ "${snapshot_present}" == "true" && "${current_present}" == "true" && -f "${snapshot_abs}" && -f "${current_abs}" ]]; then
+    diff -u --label "${snapshot_label}" --label "${current_label}" "${snapshot_abs}" "${current_abs}" > "${diff_tmp}" 2>/dev/null || true
+  elif [[ "${snapshot_present}" != "true" && "${current_present}" == "true" && -f "${current_abs}" ]]; then
+    diff -u --label "${snapshot_label}" --label "${current_label}" /dev/null "${current_abs}" > "${diff_tmp}" 2>/dev/null || true
+  elif [[ "${snapshot_present}" == "true" && "${current_present}" != "true" && -f "${snapshot_abs}" ]]; then
+    diff -u --label "${snapshot_label}" --label "${current_label}" "${snapshot_abs}" /dev/null > "${diff_tmp}" 2>/dev/null || true
+  else
+    printf "      textual diff unavailable for non-regular file types.\n" >> "${out_file}"
+  fi
+
+  if [[ -s "${diff_tmp}" ]]; then
+    while IFS= read -r diff_line || [[ -n "${diff_line}" ]]; do
+      printf "      %s\n" "${diff_line}" >> "${out_file}"
+    done < "${diff_tmp}"
+  fi
+
+  rm -f "${diff_tmp}"
+}
+
 _git_snapshot_compare_print_grouped_rows() {
   local root_repo="$1"
   local rows_file="$2"
+  local show_diff="${3:-false}"
 
   local current_repo=""
-  local row_repo row_file row_status row_reason
+  local row_repo row_file row_status row_reason row_diff_file
 
-  while IFS=$'\t' read -r row_repo row_file row_status row_reason; do
+  while IFS=$'\t' read -r row_repo row_file row_status row_reason row_diff_file; do
     [[ -z "${row_repo}" ]] && continue
     if [[ "${current_repo}" != "${row_repo}" ]]; then
       current_repo="${row_repo}"
       printf "\nRepo: %s\n" "$(_git_snapshot_human_repo_label "${root_repo}" "${row_repo}")"
     fi
     printf "  - %s [%s] %s\n" "${row_file}" "${row_status}" "${row_reason}"
+    if [[ "${show_diff}" == "true" && -n "${row_diff_file}" && -s "${row_diff_file}" ]]; then
+      cat "${row_diff_file}"
+    fi
   done < "${rows_file}"
 }
 
@@ -2103,6 +2167,7 @@ _git_snapshot_compare_engine() {
   local snapshot_meta_root="$6"
   local snapshot_meta_origin="$7"
   local show_all="$8"
+  local show_diff="${9:-false}"
 
   local snapshot_path
   snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
@@ -2114,6 +2179,10 @@ _git_snapshot_compare_engine() {
   local rows_file
   rows_file="$(mktemp)"
   : > "${rows_file}"
+  local diff_store_dir=""
+  if [[ "${show_diff}" == "true" && "${porcelain}" != "true" ]]; then
+    diff_store_dir="$(mktemp -d)"
+  fi
 
   GSN_COMPARE_ACTIVE_REPO=""
   GSN_COMPARE_ERROR_ID=""
@@ -2130,8 +2199,8 @@ _git_snapshot_compare_engine() {
   local unresolved_diverged=0
 
   if [[ "${porcelain}" == "true" ]]; then
-    printf "compare_target\tselected_snapshot_id=%s\tselection_mode=%s\tsnapshot_origin=%s\tsnapshot_root=%s\tcurrent_root=%s\tshow_all=%s\n" \
-      "${snapshot_id}" "${selection_mode}" "${snapshot_meta_origin}" "${snapshot_meta_root}" "${root_repo}" "${show_all}"
+    printf "compare_target\tselected_snapshot_id=%s\tselection_mode=%s\tsnapshot_origin=%s\tsnapshot_root=%s\tcurrent_root=%s\tshow_all=%s\tshow_diff=%s\n" \
+      "${snapshot_id}" "${selection_mode}" "${snapshot_meta_origin}" "${snapshot_meta_root}" "${root_repo}" "${show_all}" "${show_diff}"
   fi
 
   local repo_id rel_path snapshot_head _status_hash
@@ -2164,10 +2233,10 @@ _git_snapshot_compare_engine() {
         files_total=$((files_total + 1))
         unresolved_missing=$((unresolved_missing + 1))
         if [[ "${show_all}" == "true" ]]; then
-          printf "%s\t%s\tunresolved_missing\trepo missing at %s\n" "${rel_path}" "${missing_file}" "${rel_path}" >> "${rows_file}"
+          printf "%s\t%s\tunresolved_missing\trepo missing at %s\t\n" "${rel_path}" "${missing_file}" "${rel_path}" >> "${rows_file}"
           shown_files=$((shown_files + 1))
         else
-          printf "%s\t%s\tunresolved_missing\trepo missing at %s\n" "${rel_path}" "${missing_file}" "${rel_path}" >> "${rows_file}"
+          printf "%s\t%s\tunresolved_missing\trepo missing at %s\t\n" "${rel_path}" "${missing_file}" "${rel_path}" >> "${rows_file}"
           shown_files=$((shown_files + 1))
         fi
       done < "${snapshot_files_file}"
@@ -2179,6 +2248,7 @@ _git_snapshot_compare_engine() {
       if [[ "${porcelain}" == "true" ]]; then
         _git_snapshot_compare_emit_porcelain_error "${snapshot_id}" "${rel_path}"
       fi
+      rm -rf "${diff_store_dir}"
       rm -f "${snapshot_files_file}" "${rows_file}"
       return 1
     }
@@ -2188,6 +2258,7 @@ _git_snapshot_compare_engine() {
       if [[ "${porcelain}" == "true" ]]; then
         _git_snapshot_compare_emit_porcelain_error "${snapshot_id}" "${rel_path}"
       fi
+      rm -rf "${diff_store_dir}"
       rm -rf "${snapshot_materialized_repo}"
       rm -f "${snapshot_files_file}" "${rows_file}"
       return 1
@@ -2217,7 +2288,16 @@ _git_snapshot_compare_engine() {
       esac
 
       if [[ "${show_all}" == "true" || "${GSN_COMPARE_FILE_STATUS}" == unresolved_* ]]; then
-        printf "%s\t%s\t%s\t%s\n" "${rel_path}" "${file_path}" "${GSN_COMPARE_FILE_STATUS}" "${GSN_COMPARE_FILE_REASON}" >> "${rows_file}"
+        local diff_payload_file=""
+        if [[ "${show_diff}" == "true" && "${porcelain}" != "true" && "${GSN_COMPARE_FILE_STATUS}" == "unresolved_diverged" ]]; then
+          diff_payload_file="$(mktemp "${diff_store_dir}/diff.XXXXXX")"
+          _git_snapshot_compare_render_file_diff "${snapshot_materialized_repo}" "${current_materialized_repo}" "${file_path}" "${diff_payload_file}"
+          if [[ ! -s "${diff_payload_file}" ]]; then
+            rm -f "${diff_payload_file}"
+            diff_payload_file=""
+          fi
+        fi
+        printf "%s\t%s\t%s\t%s\t%s\n" "${rel_path}" "${file_path}" "${GSN_COMPARE_FILE_STATUS}" "${GSN_COMPARE_FILE_REASON}" "${diff_payload_file}" >> "${rows_file}"
         shown_files=$((shown_files + 1))
       fi
     done < "${snapshot_files_file}"
@@ -2229,8 +2309,8 @@ _git_snapshot_compare_engine() {
   local unresolved_total=$((unresolved_missing + unresolved_diverged))
 
   if [[ "${porcelain}" == "true" ]]; then
-    local row_repo row_file row_status row_reason safe_reason
-    while IFS=$'\t' read -r row_repo row_file row_status row_reason; do
+    local row_repo row_file row_status row_reason _row_diff_file safe_reason
+    while IFS=$'\t' read -r row_repo row_file row_status row_reason _row_diff_file; do
       [[ -z "${row_repo}" ]] && continue
       safe_reason="$(_git_snapshot_compare_sanitize_porcelain_value "${row_reason}")"
       printf "compare_file\tsnapshot_id=%s\trepo=%s\tfile=%s\tstatus=%s\treason=%s\n" \
@@ -2240,6 +2320,7 @@ _git_snapshot_compare_engine() {
     printf "compare_summary\tsnapshot_id=%s\trepos_checked=%s\tfiles_total=%s\tresolved_committed=%s\tresolved_uncommitted=%s\tunresolved_missing=%s\tunresolved_diverged=%s\tunresolved_total=%s\tshown_files=%s\tcontract_version=3\n" \
       "${snapshot_id}" "${repos_checked}" "${files_total}" "${resolved_committed}" "${resolved_uncommitted}" "${unresolved_missing}" "${unresolved_diverged}" "${unresolved_total}" "${shown_files}"
 
+    rm -rf "${diff_store_dir}"
     rm -f "${rows_file}"
     return 0
   fi
@@ -2253,6 +2334,7 @@ _git_snapshot_compare_engine() {
     printf "Shared-folder registry note: target selected from all user-created snapshots in this registry.\n"
   fi
   printf "Rows shown: %s\n" "$([[ "${show_all}" == "true" ]] && printf "all statuses" || printf "unresolved only")"
+  printf "Diff details: %s\n" "$([[ "${show_diff}" == "true" ]] && printf "on (unresolved_diverged rows include unified diffs)" || printf "off (add --diff to include unified diffs for unresolved_diverged rows)")"
   printf "Repos checked: %s | snapshot files tracked: %s | unresolved: %s | resolved: %s\n" \
     "${repos_checked}" "${files_total}" "${unresolved_total}" "$((resolved_committed + resolved_uncommitted))"
 
@@ -2264,13 +2346,15 @@ _git_snapshot_compare_engine() {
 
   if [[ "${shown_files}" -eq 0 ]]; then
     printf "No rows to display for current visibility filter.\n"
+    rm -rf "${diff_store_dir}"
     rm -f "${rows_file}"
     return 0
   fi
 
   printf "\nDetails:\n"
-  _git_snapshot_compare_print_grouped_rows "${root_repo}" "${rows_file}"
+  _git_snapshot_compare_print_grouped_rows "${root_repo}" "${rows_file}" "${show_diff}"
 
+  rm -rf "${diff_store_dir}"
   rm -f "${rows_file}"
   return 0
 }
@@ -2283,6 +2367,7 @@ _git_snapshot_cmd_compare() {
   local repo_filter=""
   local porcelain="false"
   local show_all="false"
+  local show_diff="false"
 
   while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -2299,6 +2384,9 @@ _git_snapshot_cmd_compare() {
         ;;
       --all)
         show_all="true"
+        ;;
+      --diff)
+        show_diff="true"
         ;;
       -* )
         _git_snapshot_ui_err "Unknown option for compare: $1"
@@ -2325,7 +2413,8 @@ _git_snapshot_cmd_compare() {
     "${GSN_COMPARE_SELECTION_MODE}" \
     "${GSN_COMPARE_SNAPSHOT_ROOT}" \
     "${GSN_COMPARE_SNAPSHOT_ORIGIN}" \
-    "${show_all}"
+    "${show_all}" \
+    "${show_diff}"
 }
 _git_snapshot_cmd_restore() {
   local root_repo="$1"

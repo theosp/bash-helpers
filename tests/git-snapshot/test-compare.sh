@@ -24,6 +24,7 @@ compare_clean_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${pr
 assert_contains "Snapshot compare: ${progress_snapshot_id}" "${compare_clean_output}" "compare should include heading"
 assert_contains "Selected snapshot mode: explicit" "${compare_clean_output}" "explicit compare should disclose target mode"
 assert_contains "Rows shown: unresolved only" "${compare_clean_output}" "default compare visibility should be unresolved only"
+assert_contains "Diff details: off (add --diff to include unified diffs for unresolved_diverged rows)" "${compare_clean_output}" "default compare should disclose how to enable unified diffs"
 assert_contains "Compare: no unresolved snapshot work." "${compare_clean_output}" "snapshot-aligned state should have no unresolved rows"
 assert_contains "No rows to display for current visibility filter." "${compare_clean_output}" "default compare should hide resolved rows"
 
@@ -51,6 +52,11 @@ git -C "${root_repo}" commit -m "diverge from snapshot target" >/dev/null
 compare_diverged_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${progress_snapshot_id}" --repo .)"
 assert_contains "Compare: unresolved snapshot work remains." "${compare_diverged_output}" "diverged work should be unresolved"
 assert_contains "root.txt [unresolved_diverged]" "${compare_diverged_output}" "compare should classify diverged content"
+
+compare_diverged_diff_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${progress_snapshot_id}" --repo . --diff)"
+assert_contains "Diff details: on (unresolved_diverged rows include unified diffs)" "${compare_diverged_diff_output}" "compare --diff should disclose enabled unified diffs"
+assert_contains "--- snapshot:root.txt" "${compare_diverged_diff_output}" "compare --diff should include snapshot label for unified diff"
+assert_contains "+++ current:root.txt" "${compare_diverged_diff_output}" "compare --diff should include current label for unified diff"
 
 # Missing-path detection via untracked snapshot payload.
 printf "missing-target\n" > "${root_repo}/missing-target.txt"

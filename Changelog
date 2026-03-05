@@ -1,3 +1,15 @@
+v1.0.28 (2026-03-05)
+
+* Add `--diff` support to `git-snapshot compare` (human output):
+  unresolved diverged rows now include file signatures and inline unified
+  diffs when requested.
+
+* Extend compare target metadata to include `show_diff` in porcelain output
+  and disclose diff visibility mode in human summaries.
+
+* Update help/README/skill contract docs and compare regression tests to
+  cover the new `--diff` option and output semantics.
+
 v1.0.27 (2026-03-05)
 
 * Reframe `git-snapshot compare` as the canonical progress command and

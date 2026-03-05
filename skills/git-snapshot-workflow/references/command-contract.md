@@ -64,7 +64,7 @@
     - `3`: compatibility issues found
     - `1`: usage/runtime error
 
-- `git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--porcelain]`
+- `git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--porcelain]`
   - Snapshot progress engine over snapshot-captured files only.
   - Optional `snapshot_id`:
     - when omitted, select latest `origin=user` snapshot from full shared-folder registry
@@ -79,10 +79,11 @@
   - Visibility policy:
     - default: show unresolved rows only
     - `--all`: show resolved and unresolved rows
+    - `--diff`: include unified diffs for `unresolved_diverged` rows (human output)
   - Default compare is diagnostic and exits `0` on successful execution.
   - Porcelain rows:
     - `compare_target`: selected snapshot metadata (`selected_snapshot_id`,
-      `selection_mode`, `snapshot_origin`, `snapshot_root`, `current_root`, `show_all`)
+      `selection_mode`, `snapshot_origin`, `snapshot_root`, `current_root`, `show_all`, `show_diff`)
     - `compare_file`: file-level status (`status`, `reason`)
     - `compare_summary`: totals (`repos_checked`, `files_total`,
       `resolved_committed`, `resolved_uncommitted`, `unresolved_missing`,

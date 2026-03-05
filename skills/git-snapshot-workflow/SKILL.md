@@ -52,6 +52,7 @@ Follow this sequence and report each step.
 - Run: `git-snapshot compare <snapshot_id>`.
   - default compare output is unresolved-only
   - use `--all` when you need resolved rows too
+  - use `--diff` when you need inline unified diffs for unresolved diverged files
   - compare is diagnostic and returns `0` on successful execution
 
 3. Restore snapshot (only on explicit user restore intent)
