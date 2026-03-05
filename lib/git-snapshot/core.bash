@@ -2366,6 +2366,8 @@ _git_snapshot_compare_launch_gui() {
   local selection_mode="$3"
   local repo_filter="$4"
   local show_all="$5"
+  local gui_output=""
+  local gui_status=0
 
   local core_dir helpers_root gui_script snapshot_bin
   core_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -2383,13 +2385,38 @@ _git_snapshot_compare_launch_gui() {
     return 1
   fi
 
-  python3 "${gui_script}" \
+  gui_output="$(python3 "${gui_script}" \
     --root-repo "${root_repo}" \
     --snapshot-id "${snapshot_id}" \
     --selection-mode "${selection_mode}" \
     --repo-filter "${repo_filter}" \
     --show-all "${show_all}" \
-    --git-snapshot-bin "${snapshot_bin}"
+    --git-snapshot-bin "${snapshot_bin}" 2>&1)" || gui_status=$?
+
+  if [[ "${gui_status}" -ne 0 ]]; then
+    if [[ "${gui_status}" -ge 128 ]] || [[ "${gui_output}" == *"required, have instead"* ]]; then
+      _git_snapshot_ui_err "compare --gui crashed before opening the UI."
+      _git_snapshot_ui_err "Your current python3/tkinter runtime appears incompatible with this macOS environment."
+      _git_snapshot_ui_err "Try another python3 (for example, a system/Homebrew build with working tkinter)."
+      if [[ -n "${gui_output}" ]]; then
+        _git_snapshot_ui_err "python3 diagnostics:"
+        while IFS= read -r line; do
+          _git_snapshot_ui_err "  ${line}"
+        done <<< "${gui_output}"
+      fi
+      return 1
+    fi
+
+    if [[ -n "${gui_output}" ]]; then
+      printf "%s\n" "${gui_output}" >&2
+    fi
+    return "${gui_status}"
+  fi
+
+  if [[ -n "${gui_output}" ]]; then
+    printf "%s\n" "${gui_output}"
+  fi
+  return 0
 }
 
 _git_snapshot_cmd_compare() {

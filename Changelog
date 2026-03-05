@@ -1,3 +1,11 @@
+v1.0.31 (2026-03-05)
+
+* Harden `git-snapshot compare --gui` launch failure handling so Python/Tk crashes (including macOS runtime mismatch aborts) are reported as actionable `git-snapshot` errors instead of raw shell `Abort trap` output.
+
+* Keep compare GUI test-mode output behavior intact while routing launcher stderr/stdout through controlled error reporting.
+
+* Add GUI launcher abort regression coverage in `tests/git-snapshot/test-compare-gui.sh` via `GIT_SNAPSHOT_GUI_FORCE_ABORT=1`.
+
 v1.0.30 (2026-03-05)
 
 * Add `git-snapshot compare --gui` for visual browsing with per-file diff preview and external diff launch integration (`meld`, `opendiff`, `code --diff`).

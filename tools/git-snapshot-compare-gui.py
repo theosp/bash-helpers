@@ -458,6 +458,8 @@ def parse_args(argv):
 
 def main(argv):
     args = parse_args(argv)
+    if os.environ.get("GIT_SNAPSHOT_GUI_FORCE_ABORT") == "1":
+        os.abort()
     if os.environ.get("GIT_SNAPSHOT_GUI_TEST_MODE") == "1":
         return run_test_mode(args)
 
