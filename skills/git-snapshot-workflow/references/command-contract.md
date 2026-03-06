@@ -97,10 +97,12 @@
   - Porcelain rows:
     - `compare_target`: selected snapshot metadata (`selected_snapshot_id`,
       `selection_mode`, `snapshot_origin`, `snapshot_root`, `current_root`, `show_all`, `show_diff`)
-    - `compare_file`: file-level status (`status`)
+    - `compare_file`: file-level status and reason (`status`, `reason`)
     - `compare_summary`: totals (`repos_checked`, `files_total`,
       `resolved_committed`, `resolved_uncommitted`, `unresolved_missing`,
-      `unresolved_diverged`, `unresolved_total`, `shown_files`) + `contract_version=4`
+      `unresolved_diverged`, `unresolved_total`, `shown_files`) + telemetry
+      (`engine=v2`, `elapsed_ms` wall-clock milliseconds, `cache_hit_repos`,
+      `cache_miss_repos`) + `contract_version=5`
   - Exit codes:
     - `0`: compare completed
     - `1`: usage/runtime error

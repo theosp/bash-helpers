@@ -58,5 +58,6 @@ assert_contains "Compare: unresolved snapshot work remains." "${symlink_diverged
 assert_contains "link.txt [unresolved_diverged]" "${symlink_diverged_output}" "diverged symlink should classify as unresolved_diverged"
 
 symlink_diverged_porcelain_output="$(cd "${repo}" && git_snapshot_test_cmd compare "${symlink_snapshot_id}" --repo . --all --porcelain)"
-assert_contains $'compare_file\tsnapshot_id='"${symlink_snapshot_id}"$'\trepo=.\tfile=link.txt\tstatus=unresolved_diverged' "${symlink_diverged_porcelain_output}" "porcelain should expose unresolved_diverged status for symlink divergence"
-assert_contains $'compare_summary\tsnapshot_id='"${symlink_snapshot_id}"$'\trepos_checked=1\tfiles_total=1\tresolved_committed=0\tresolved_uncommitted=0\tunresolved_missing=0\tunresolved_diverged=1\tunresolved_total=1\tshown_files=1\tcontract_version=4' "${symlink_diverged_porcelain_output}" "porcelain summary should keep contract v4 counters for diverged symlink"
+assert_contains $'compare_file\tsnapshot_id='"${symlink_snapshot_id}"$'\trepo=.\tfile=link.txt\tstatus=unresolved_diverged\treason=current content or mode diverges from snapshot target' "${symlink_diverged_porcelain_output}" "porcelain should expose unresolved_diverged status and reason for symlink divergence"
+assert_contains $'compare_summary\tsnapshot_id='"${symlink_snapshot_id}"$'\trepos_checked=1\tfiles_total=1\tresolved_committed=0\tresolved_uncommitted=0\tunresolved_missing=0\tunresolved_diverged=1\tunresolved_total=1\tshown_files=1\tengine=v2\telapsed_ms=' "${symlink_diverged_porcelain_output}" "porcelain summary should keep v5 counters for diverged symlink"
+assert_contains $'\tcontract_version=5' "${symlink_diverged_porcelain_output}" "porcelain summary should expose v5 contract version"

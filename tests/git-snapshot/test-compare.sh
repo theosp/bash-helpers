@@ -38,8 +38,11 @@ assert_contains "root.txt [resolved_uncommitted]" "${compare_all_output}" "--all
 
 compare_all_porcelain_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${progress_snapshot_id}" --repo . --all --porcelain)"
 assert_contains $'compare_target\tselected_snapshot_id='"${progress_snapshot_id}"$'\tselection_mode=explicit\tsnapshot_origin=user\tsnapshot_root=' "${compare_all_porcelain_output}" "compare porcelain should include target row"
-assert_contains $'compare_file\tsnapshot_id='"${progress_snapshot_id}"$'\trepo=.\tfile=root.txt\tstatus=resolved_uncommitted' "${compare_all_porcelain_output}" "compare porcelain should expose resolved_uncommitted status"
-assert_contains $'compare_summary\tsnapshot_id='"${progress_snapshot_id}"$'\trepos_checked=1\tfiles_total=1\tresolved_committed=0\tresolved_uncommitted=1\tunresolved_missing=0\tunresolved_diverged=0\tunresolved_total=0\tshown_files=1\tcontract_version=4' "${compare_all_porcelain_output}" "compare porcelain summary should expose v4 status counters"
+assert_contains $'compare_file\tsnapshot_id='"${progress_snapshot_id}"$'\trepo=.\tfile=root.txt\tstatus=resolved_uncommitted\treason=snapshot target content and mode match working tree but not HEAD' "${compare_all_porcelain_output}" "compare porcelain should expose resolved_uncommitted status and reason"
+assert_contains $'compare_summary\tsnapshot_id='"${progress_snapshot_id}"$'\trepos_checked=1\tfiles_total=1\tresolved_committed=0\tresolved_uncommitted=1\tunresolved_missing=0\tunresolved_diverged=0\tunresolved_total=0\tshown_files=1\tengine=v2\telapsed_ms=' "${compare_all_porcelain_output}" "compare porcelain summary should expose v5 status counters with v2 telemetry"
+assert_contains $'\tcache_hit_repos=' "${compare_all_porcelain_output}" "compare porcelain summary should expose cache hit telemetry"
+assert_contains $'\tcache_miss_repos=' "${compare_all_porcelain_output}" "compare porcelain summary should expose cache miss telemetry"
+assert_contains $'\tcontract_version=5' "${compare_all_porcelain_output}" "compare porcelain summary should expose v5 contract version"
 
 # Commit snapshot-aligned state and verify status transition to resolved_committed.
 git -C "${root_repo}" add root.txt

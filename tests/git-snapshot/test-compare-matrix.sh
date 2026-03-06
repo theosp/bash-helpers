@@ -45,8 +45,9 @@ delete_diverged_output="$(cd "${repo_delete_case}" && git_snapshot_test_cmd comp
 assert_contains "delete-me.txt [unresolved_diverged]" "${delete_diverged_output}" "reintroduced file should diverge from deletion target"
 
 delete_diverged_porcelain="$(cd "${repo_delete_case}" && git_snapshot_test_cmd compare "${delete_snapshot_id}" --repo . --porcelain)"
-assert_contains $'compare_file\tsnapshot_id='"${delete_snapshot_id}"$'\trepo=.\tfile=delete-me.txt\tstatus=unresolved_diverged' "${delete_diverged_porcelain}" "porcelain should expose unresolved_diverged status"
-assert_contains $'compare_summary\tsnapshot_id='"${delete_snapshot_id}"$'\trepos_checked=1\tfiles_total=1\tresolved_committed=0\tresolved_uncommitted=0\tunresolved_missing=0\tunresolved_diverged=1\tunresolved_total=1\tshown_files=1\tcontract_version=4' "${delete_diverged_porcelain}" "porcelain summary should expose v4 unresolved counters"
+assert_contains $'compare_file\tsnapshot_id='"${delete_snapshot_id}"$'\trepo=.\tfile=delete-me.txt\tstatus=unresolved_diverged\treason=path still exists while snapshot target removes it' "${delete_diverged_porcelain}" "porcelain should expose unresolved_diverged status and reason"
+assert_contains $'compare_summary\tsnapshot_id='"${delete_snapshot_id}"$'\trepos_checked=1\tfiles_total=1\tresolved_committed=0\tresolved_uncommitted=0\tunresolved_missing=0\tunresolved_diverged=1\tunresolved_total=1\tshown_files=1\tengine=v2\telapsed_ms=' "${delete_diverged_porcelain}" "porcelain summary should expose v5 unresolved counters and telemetry"
+assert_contains $'\tcontract_version=5' "${delete_diverged_porcelain}" "porcelain summary should expose v5 contract version"
 
 # 3) Missing repo path should map snapshot files to unresolved_missing rows.
 nested_root="$(git_snapshot_test_make_nested_fixture)"
@@ -89,4 +90,4 @@ rename_compare_output="$(cd "${repo_rename_case}" && git_snapshot_test_cmd compa
 assert_contains "old.txt [unresolved_diverged]" "${rename_compare_output}" "reintroduced rename source should be unresolved_diverged"
 
 rename_porcelain_output="$(cd "${repo_rename_case}" && git_snapshot_test_cmd compare "${rename_snapshot_id}" --repo . --porcelain)"
-assert_contains $'compare_file\tsnapshot_id='"${rename_snapshot_id}"$'\trepo=.\tfile=old.txt\tstatus=unresolved_diverged' "${rename_porcelain_output}" "porcelain should expose unresolved_diverged for reintroduced rename source"
+assert_contains $'compare_file\tsnapshot_id='"${rename_snapshot_id}"$'\trepo=.\tfile=old.txt\tstatus=unresolved_diverged\treason=path still exists while snapshot target removes it' "${rename_porcelain_output}" "porcelain should expose unresolved_diverged for reintroduced rename source"

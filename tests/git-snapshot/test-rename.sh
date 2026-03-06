@@ -16,6 +16,10 @@ printf "rename-base\n" >> "${root_repo}/root.txt"
 create_output="$(cd "${root_repo}" && git_snapshot_test_cmd create)"
 old_snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${create_output}")"
 assert_non_empty "${old_snapshot_id}" "create should return snapshot id"
+old_cache_path="${snapshot_root}/.compare-cache-v2/${old_snapshot_id}"
+
+cd "${root_repo}" && git_snapshot_test_cmd compare "${old_snapshot_id}" --repo . --all --porcelain >/dev/null
+assert_file_exists "${old_cache_path}" "compare should create a cache entry for the old snapshot id"
 
 created_before="$(cd "${root_repo}" && git_snapshot_test_cmd list --porcelain | awk -F'\t' -v sid="${old_snapshot_id}" '
   $1 == "snapshot" {
@@ -34,11 +38,14 @@ created_before="$(cd "${root_repo}" && git_snapshot_test_cmd list --porcelain | 
 assert_non_empty "${created_before}" "list porcelain should include created_at_epoch for old id"
 
 new_snapshot_id="renamed-snapshot"
+new_cache_path="${snapshot_root}/.compare-cache-v2/${new_snapshot_id}"
 rename_output="$(cd "${root_repo}" && git_snapshot_test_cmd rename "${old_snapshot_id}" "${new_snapshot_id}")"
 assert_contains "Renamed snapshot ${old_snapshot_id} -> ${new_snapshot_id}" "${rename_output}" "rename should report success"
 
 assert_file_not_exists "${snapshot_root}/${old_snapshot_id}" "old snapshot path should be removed"
 assert_file_exists "${snapshot_root}/${new_snapshot_id}" "new snapshot path should exist"
+assert_file_not_exists "${old_cache_path}" "rename should drop cache for the old snapshot id"
+assert_file_not_exists "${new_cache_path}" "rename should also clear any stale cache for the new snapshot id"
 
 list_output="$(cd "${root_repo}" && git_snapshot_test_cmd list)"
 assert_contains "${new_snapshot_id}" "${list_output}" "list should include renamed id"
@@ -46,6 +53,8 @@ assert_not_contains "${old_snapshot_id}" "${list_output}" "list should exclude o
 
 inspect_after="$(cd "${root_repo}" && git_snapshot_test_cmd inspect "${new_snapshot_id}" --porcelain)"
 assert_contains $'inspect\tsnapshot_id='"${new_snapshot_id}" "${inspect_after}" "inspect should resolve new snapshot id"
+cd "${root_repo}" && git_snapshot_test_cmd compare "${new_snapshot_id}" --repo . --all --porcelain >/dev/null
+assert_file_exists "${new_cache_path}" "renamed snapshot should warm a fresh cache on demand"
 created_after="$(cd "${root_repo}" && git_snapshot_test_cmd list --porcelain | awk -F'\t' -v sid="${new_snapshot_id}" '
   $1 == "snapshot" {
     id = ""; epoch = ""

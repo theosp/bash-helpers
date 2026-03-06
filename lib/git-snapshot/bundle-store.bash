@@ -93,15 +93,19 @@ _git_snapshot_store_assert_snapshot_exists() {
 
 _git_snapshot_store_list_snapshot_ids() {
   local root_repo="$1"
-  local snapshots_root
+  local snapshots_root snapshot_dir
 
   snapshots_root="$(_git_snapshot_store_root_for_repo "${root_repo}")"
   if [[ ! -d "${snapshots_root}" ]]; then
     return 0
   fi
 
-  find "${snapshots_root}" -mindepth 1 -maxdepth 1 -type d -print 2>/dev/null | xargs -n1 basename | sort
+  while IFS= read -r -d '' snapshot_dir; do
+    [[ -f "${snapshot_dir}/meta.env" ]] || continue
+    basename "${snapshot_dir}"
+  done < <(find "${snapshots_root}" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null) | sort
 }
+
 
 _git_snapshot_store_write_snapshot_meta() {
   local snapshot_path="$1"
