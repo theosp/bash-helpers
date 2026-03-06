@@ -273,10 +273,16 @@ Target selection:
 
 Human output discloses selected snapshot metadata and status totals.
 
+Persistent compare cache:
+- compare stores per-snapshot/per-repo results under `$HOME/git-snapshots/<root>/.compare-cache-v2` by default
+- disable with `GIT_SNAPSHOT_COMPARE_CACHE=0`
+- override worker parallelism with `GIT_SNAPSHOT_COMPARE_JOBS=<n>`
+- cap retained cache entries per snapshot/repo family with `GIT_SNAPSHOT_COMPARE_CACHE_MAX_ENTRIES=<n>`
+
 Porcelain rows:
 - `compare_target`: selected snapshot metadata + visibility mode
-- `compare_file`: one row per shown file with `status`
-- `compare_summary`: totals and `contract_version=4`
+- `compare_file`: one row per shown file with escaped `file`, `status`, and `reason` (`\`, tab, newline, and carriage return are backslash-escaped)
+- `compare_summary`: totals, telemetry (`engine=v2`, `elapsed_ms`, `cache_hit_repos`, `cache_miss_repos`), and `contract_version=5`
 
 Exit codes:
 - `0`: compare completed

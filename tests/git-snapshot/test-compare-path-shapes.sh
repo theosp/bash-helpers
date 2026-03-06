@@ -40,7 +40,68 @@ assert_contains "Compare: no unresolved snapshot work." "${shape_compare_output}
 assert_contains "No rows to display for current visibility filter." "${shape_compare_output}" "space/quote path shapes should keep unresolved view empty"
 rm -f "${repo}/space name.txt" "${repo}/quote'and\"double\".txt"
 
-# 3) Symlink path-shape coverage: spaces/quotes in symlink path should classify correctly.
+# 3) Tracked tab/newline paths should survive compare classification and porcelain escaping.
+tracked_control_repo="${TEST_REPOS_ROOT}/tracked-control-path-shapes"
+git_snapshot_test_init_repo "${tracked_control_repo}"
+tracked_tab_path=$'tracked\tname.txt'
+tracked_newline_path=$'tracked\nline.txt'
+
+printf "tracked-base\n" > "${tracked_control_repo}/${tracked_tab_path}"
+printf "tracked-base\n" > "${tracked_control_repo}/${tracked_newline_path}"
+git -C "${tracked_control_repo}" add "${tracked_tab_path}" "${tracked_newline_path}"
+git -C "${tracked_control_repo}" commit -m "seed tracked control-path fixture" >/dev/null
+
+printf "tracked-snapshot\n" > "${tracked_control_repo}/${tracked_tab_path}"
+printf "tracked-snapshot\n" > "${tracked_control_repo}/${tracked_newline_path}"
+git -C "${tracked_control_repo}" add "${tracked_tab_path}" "${tracked_newline_path}"
+
+tracked_control_create_output="$(cd "${tracked_control_repo}" && git_snapshot_test_cmd create tracked-control-path-shapes)"
+tracked_control_snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${tracked_control_create_output}")"
+assert_eq "tracked-control-path-shapes" "${tracked_control_snapshot_id}" "tracked control-path snapshot id should be preserved"
+
+tracked_control_output="$(cd "${tracked_control_repo}" && git_snapshot_test_cmd compare "${tracked_control_snapshot_id}" --repo . --all)"
+assert_contains 'tracked\tname.txt [resolved_uncommitted]' "${tracked_control_output}" "tracked tab path should render escaped and resolved before commit"
+assert_contains 'tracked\nline.txt [resolved_uncommitted]' "${tracked_control_output}" "tracked newline path should render escaped and resolved before commit"
+
+tracked_control_porcelain="$(cd "${tracked_control_repo}" && git_snapshot_test_cmd compare "${tracked_control_snapshot_id}" --repo . --all --porcelain)"
+assert_contains $'compare_file\tsnapshot_id='"${tracked_control_snapshot_id}"$'\trepo=.\tfile=tracked\\tname.txt\tstatus=resolved_uncommitted\treason=snapshot target content and mode match working tree but not HEAD' "${tracked_control_porcelain}" "tracked tab path should stay intact in porcelain"
+assert_contains $'compare_file\tsnapshot_id='"${tracked_control_snapshot_id}"$'\trepo=.\tfile=tracked\\nline.txt\tstatus=resolved_uncommitted\treason=snapshot target content and mode match working tree but not HEAD' "${tracked_control_porcelain}" "tracked newline path should stay intact in porcelain"
+
+git -C "${tracked_control_repo}" commit -m "commit tracked control-path update" >/dev/null
+tracked_control_committed="$(cd "${tracked_control_repo}" && git_snapshot_test_cmd compare "${tracked_control_snapshot_id}" --repo . --all --porcelain)"
+assert_contains $'compare_file\tsnapshot_id='"${tracked_control_snapshot_id}"$'\trepo=.\tfile=tracked\\tname.txt\tstatus=resolved_committed\treason=snapshot target content and mode match HEAD and working tree' "${tracked_control_committed}" "tracked tab path should classify as resolved_committed after commit"
+assert_contains $'compare_file\tsnapshot_id='"${tracked_control_snapshot_id}"$'\trepo=.\tfile=tracked\\nline.txt\tstatus=resolved_committed\treason=snapshot target content and mode match HEAD and working tree' "${tracked_control_committed}" "tracked newline path should classify as resolved_committed after commit"
+
+# 4) Untracked tab/newline paths should survive snapshot manifests, compare output, and divergence checks.
+untracked_control_repo="${TEST_REPOS_ROOT}/untracked-control-path-shapes"
+git_snapshot_test_init_repo "${untracked_control_repo}"
+git_snapshot_test_commit_file "${untracked_control_repo}" "tracked.txt" "tracked-base" "init untracked control repo"
+untracked_tab_path=$'note\tname.txt'
+untracked_newline_path=$'note\nline.txt'
+
+printf "untracked-snapshot\n" > "${untracked_control_repo}/${untracked_tab_path}"
+printf "untracked-snapshot\n" > "${untracked_control_repo}/${untracked_newline_path}"
+
+untracked_control_create_output="$(cd "${untracked_control_repo}" && git_snapshot_test_cmd create untracked-control-path-shapes)"
+untracked_control_snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${untracked_control_create_output}")"
+assert_eq "untracked-control-path-shapes" "${untracked_control_snapshot_id}" "untracked control-path snapshot id should be preserved"
+
+untracked_control_output="$(cd "${untracked_control_repo}" && git_snapshot_test_cmd compare "${untracked_control_snapshot_id}" --repo . --all)"
+assert_contains 'note\tname.txt [resolved_uncommitted]' "${untracked_control_output}" "untracked tab path should render escaped and resolved"
+assert_contains 'note\nline.txt [resolved_uncommitted]' "${untracked_control_output}" "untracked newline path should render escaped and resolved"
+
+untracked_control_porcelain="$(cd "${untracked_control_repo}" && git_snapshot_test_cmd compare "${untracked_control_snapshot_id}" --repo . --all --porcelain)"
+assert_contains $'compare_file\tsnapshot_id='"${untracked_control_snapshot_id}"$'\trepo=.\tfile=note\\tname.txt\tstatus=resolved_uncommitted\treason=snapshot target content and mode match working tree but not HEAD' "${untracked_control_porcelain}" "untracked tab path should stay intact in porcelain"
+assert_contains $'compare_file\tsnapshot_id='"${untracked_control_snapshot_id}"$'\trepo=.\tfile=note\\nline.txt\tstatus=resolved_uncommitted\treason=snapshot target content and mode match working tree but not HEAD' "${untracked_control_porcelain}" "untracked newline path should stay intact in porcelain"
+
+printf "untracked-diverged\n" > "${untracked_control_repo}/${untracked_tab_path}"
+printf "untracked-diverged\n" > "${untracked_control_repo}/${untracked_newline_path}"
+
+untracked_control_diverged="$(cd "${untracked_control_repo}" && git_snapshot_test_cmd compare "${untracked_control_snapshot_id}" --repo . --all --porcelain)"
+assert_contains $'compare_file\tsnapshot_id='"${untracked_control_snapshot_id}"$'\trepo=.\tfile=note\\tname.txt\tstatus=unresolved_diverged\treason=current content or mode diverges from snapshot target' "${untracked_control_diverged}" "untracked tab path should classify as unresolved_diverged after edits"
+assert_contains $'compare_file\tsnapshot_id='"${untracked_control_snapshot_id}"$'\trepo=.\tfile=note\\nline.txt\tstatus=unresolved_diverged\treason=current content or mode diverges from snapshot target' "${untracked_control_diverged}" "untracked newline path should classify as unresolved_diverged after edits"
+
+# 5) Symlink path-shape coverage: spaces/quotes in symlink path should classify correctly.
 symlink_repo="${TEST_REPOS_ROOT}/symlink-path-shapes"
 git_snapshot_test_init_repo "${symlink_repo}"
 target_one="target one.txt"
@@ -73,7 +134,7 @@ ln -s "${target_one}" "${symlink_repo}/${symlink_path}"
 symlink_diverged_output="$(cd "${symlink_repo}" && git_snapshot_test_cmd compare "${symlink_snapshot_id}" --repo .)"
 assert_contains "${symlink_path} [unresolved_diverged]" "${symlink_diverged_output}" "symlink path-shape divergence should classify as unresolved_diverged"
 
-# 4) Structured compare porcelain errors: emit stable compare_error identifier rows.
+# 6) Structured compare porcelain errors: emit stable compare_error identifier rows.
 error_repo="${TEST_REPOS_ROOT}/porcelain-errors"
 git_snapshot_test_init_repo "${error_repo}"
 git_snapshot_test_commit_file "${error_repo}" "tracked.txt" "tracked-base" "init tracked"

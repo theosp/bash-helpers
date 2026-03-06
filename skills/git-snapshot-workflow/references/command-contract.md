@@ -97,7 +97,8 @@
   - Porcelain rows:
     - `compare_target`: selected snapshot metadata (`selected_snapshot_id`,
       `selection_mode`, `snapshot_origin`, `snapshot_root`, `current_root`, `show_all`, `show_diff`)
-    - `compare_file`: file-level status and reason (`status`, `reason`)
+    - `compare_file`: file-level status and reason (`status`, `reason`);
+      `file` uses backslash escapes for `\`, tab, newline, and carriage return
     - `compare_summary`: totals (`repos_checked`, `files_total`,
       `resolved_committed`, `resolved_uncommitted`, `unresolved_missing`,
       `unresolved_diverged`, `unresolved_total`, `shown_files`) + telemetry

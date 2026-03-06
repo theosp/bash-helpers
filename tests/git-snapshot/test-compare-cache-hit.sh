@@ -77,6 +77,39 @@ same_untracked_second="$(cd "${same_untracked_repo}" && git_snapshot_test_cmd co
 assert_contains $'\tcache_hit_repos=0\tcache_miss_repos=1\tcontract_version=5' "${same_untracked_second}" "content-only untracked edits should invalidate cache"
 assert_contains $'compare_file\tsnapshot_id='"${same_untracked_snapshot_id}"$'\trepo=.\tfile=note.txt\tstatus=unresolved_diverged\treason=current content or mode diverges from snapshot target' "${same_untracked_second}" "content-only untracked edits should recalculate compare rows"
 
+# 1d) Special-path files must preserve stable escaped compare rows across cache hits and misses.
+special_path_repo="${TEST_REPOS_ROOT}/cache-hit-special-paths"
+git_snapshot_test_init_repo "${special_path_repo}"
+git_snapshot_test_commit_file "${special_path_repo}" "tracked.txt" "base" "init special-path cache repo"
+special_tracked_path=$'tracked\tcache.txt'
+special_untracked_path=$'note\ncache.txt'
+
+printf "tracked-snapshot\n" > "${special_path_repo}/${special_tracked_path}"
+git -C "${special_path_repo}" add "${special_tracked_path}"
+printf "untracked-snapshot\n" > "${special_path_repo}/${special_untracked_path}"
+
+special_create_output="$(cd "${special_path_repo}" && git_snapshot_test_cmd create cache-hit-special-paths)"
+special_snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${special_create_output}")"
+assert_eq "cache-hit-special-paths" "${special_snapshot_id}" "special-path cache snapshot id should be preserved"
+
+special_first="$(cd "${special_path_repo}" && git_snapshot_test_cmd compare "${special_snapshot_id}" --repo . --all --porcelain)"
+assert_contains $'\tcache_hit_repos=0\tcache_miss_repos=1\tcontract_version=5' "${special_first}" "first special-path compare should miss cache"
+assert_contains $'compare_file\tsnapshot_id='"${special_snapshot_id}"$'\trepo=.\tfile=tracked\\tcache.txt\tstatus=resolved_uncommitted\treason=snapshot target content and mode match working tree but not HEAD' "${special_first}" "tracked tab path should stay intact on cold compare"
+assert_contains $'compare_file\tsnapshot_id='"${special_snapshot_id}"$'\trepo=.\tfile=note\\ncache.txt\tstatus=resolved_uncommitted\treason=snapshot target content and mode match working tree but not HEAD' "${special_first}" "untracked newline path should stay intact on cold compare"
+
+special_second="$(cd "${special_path_repo}" && git_snapshot_test_cmd compare "${special_snapshot_id}" --repo . --all --porcelain)"
+assert_contains $'\tcache_hit_repos=1\tcache_miss_repos=0\tcontract_version=5' "${special_second}" "second special-path compare should hit cache"
+special_rows_first="$(printf "%s\n" "${special_first}" | grep '^compare_file' || true)"
+special_rows_second="$(printf "%s\n" "${special_second}" | grep '^compare_file' || true)"
+assert_eq "${special_rows_first}" "${special_rows_second}" "special-path cache hits should preserve identical escaped compare_file rows"
+
+printf "tracked-diverged\n" > "${special_path_repo}/${special_tracked_path}"
+printf "untracked-diverged\n" > "${special_path_repo}/${special_untracked_path}"
+special_third="$(cd "${special_path_repo}" && git_snapshot_test_cmd compare "${special_snapshot_id}" --repo . --all --porcelain)"
+assert_contains $'\tcache_hit_repos=0\tcache_miss_repos=1\tcontract_version=5' "${special_third}" "special-path content changes should invalidate cache"
+assert_contains $'compare_file\tsnapshot_id='"${special_snapshot_id}"$'\trepo=.\tfile=tracked\\tcache.txt\tstatus=unresolved_diverged\treason=current content or mode diverges from snapshot target' "${special_third}" "tracked tab path should recalculate on cache miss"
+assert_contains $'compare_file\tsnapshot_id='"${special_snapshot_id}"$'\trepo=.\tfile=note\\ncache.txt\tstatus=unresolved_diverged\treason=current content or mode diverges from snapshot target' "${special_third}" "untracked newline path should recalculate on cache miss"
+
 git -C "${repo}" add tracked.txt
 git -C "${repo}" commit -m "head invalidation" >/dev/null
 head_invalidation_compare="$(cd "${repo}" && git_snapshot_test_cmd compare "${snapshot_id}" --repo . --all --porcelain)"

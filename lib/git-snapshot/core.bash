@@ -379,6 +379,11 @@ _git_snapshot_create_internal() {
         cd "${repo_abs}"
         tar -cf "${repo_dir}/untracked.tar" "${untracked_files[@]}"
       )
+
+      : > "${repo_dir}/untracked.paths.b64"
+      for file_path in "${untracked_files[@]}"; do
+        printf "%s\n" "$(_git_snapshot_store_base64_encode "${file_path}")" >> "${repo_dir}/untracked.paths.b64"
+      done
     fi
 
     _git_snapshot_store_write_repo_entry "${repos_tsv}" "${repo_id}" "${rel}" "${head}" "${status_hash}"
@@ -1611,10 +1616,21 @@ _git_snapshot_resolve_compare_target() {
 _git_snapshot_compare_sanitize_porcelain_value() {
   local value="$1"
 
-  value="${value//$'\t'/ }"
-  value="${value//$'\n'/ }"
-  value="${value//$'\r'/ }"
+  value="${value//\\/\\\\}"
+  value="${value//$'\t'/\\t}"
+  value="${value//$'\n'/\\n}"
+  value="${value//$'\r'/\\r}"
   printf "%s" "${value}"
+}
+
+_git_snapshot_compare_decode_path() {
+  local encoded_path="$1"
+  _git_snapshot_store_base64_decode "${encoded_path}"
+}
+
+_git_snapshot_compare_emit_encoded_path() {
+  local file_path="$1"
+  printf "%s\n" "$(_git_snapshot_store_base64_encode "${file_path}")"
 }
 
 _git_snapshot_compare_record_error() {
@@ -1703,69 +1719,13 @@ _git_snapshot_compare_capture_fs_signature() {
   GSN_COMPARE_SIG_HASH="n/a"
 }
 
-_git_snapshot_compare_capture_head_signature() {
-  local repo_abs="$1"
-  local file_path="$2"
-  local raw_entry=""
-  local entry_meta=""
-  local mode=""
-  local entry_type=""
-  local object_id=""
-
-  GSN_COMPARE_SIG_PRESENT="false"
-  GSN_COMPARE_SIG_MODE=""
-  GSN_COMPARE_SIG_HASH=""
-
-  if ! git -C "${repo_abs}" rev-parse --verify -q HEAD >/dev/null 2>&1; then
-    return 0
-  fi
-
-  raw_entry="$(git -C "${repo_abs}" ls-tree --full-tree -z HEAD -- "${file_path}" | tr '\0' '\n' | head -n 1)"
-  if [[ -z "${raw_entry}" ]]; then
-    return 0
-  fi
-
-  entry_meta="${raw_entry%%$'\t'*}"
-  mode="${entry_meta%% *}"
-  entry_meta="${entry_meta#* }"
-  entry_type="${entry_meta%% *}"
-  object_id="${entry_meta##* }"
-
-  GSN_COMPARE_SIG_PRESENT="true"
-  GSN_COMPARE_SIG_MODE="${mode}"
-
-  case "${entry_type}" in
-    blob)
-      GSN_COMPARE_SIG_HASH="$(git -C "${repo_abs}" cat-file blob "${object_id}" | _git_snapshot_compare_hash_stdin)"
-      ;;
-    *)
-      GSN_COMPARE_SIG_HASH="${object_id}"
-      ;;
-  esac
-}
-
-_git_snapshot_compare_signatures_match() {
-  local left_present="$1"
-  local left_mode="$2"
-  local left_hash="$3"
-  local right_present="$4"
-  local right_mode="$5"
-  local right_hash="$6"
-
-  if [[ "${left_present}" != "true" || "${right_present}" != "true" ]]; then
-    return 1
-  fi
-
-  [[ "${left_mode}" == "${right_mode}" && "${left_hash}" == "${right_hash}" ]]
-}
-
 _git_snapshot_compare_unquote_patch_path() {
   local raw_path="$1"
 
   if [[ "${raw_path}" == \"*\" && "${raw_path}" == *\" ]]; then
     raw_path="${raw_path:1:${#raw_path}-2}"
-    raw_path="${raw_path//\\\"/\"}"
-    raw_path="${raw_path//\\\\/\\}"
+    printf "%b" "${raw_path}"
+    return 0
   fi
 
   printf "%s" "${raw_path}"
@@ -1785,7 +1745,7 @@ _git_snapshot_compare_collect_patch_files() {
     file_path="${row#*$'\t'}"
     file_path="${file_path#*$'\t'}"
     [[ -z "${file_path}" ]] && continue
-    printf "%s\n" "${file_path}"
+    _git_snapshot_compare_emit_encoded_path "${file_path}"
   done < <(git apply --numstat -z "${patch_file}" 2>/dev/null || true)
 
   # numstat reports rename destination only; include rename sources explicitly.
@@ -1794,8 +1754,33 @@ _git_snapshot_compare_collect_patch_files() {
     raw_path="${line#rename from }"
     file_path="$(_git_snapshot_compare_unquote_patch_path "${raw_path}")"
     [[ -z "${file_path}" ]] && continue
-    printf "%s\n" "${file_path}"
+    _git_snapshot_compare_emit_encoded_path "${file_path}"
   done < "${patch_file}"
+}
+
+_git_snapshot_compare_collect_untracked_paths() {
+  local repo_bundle_dir="$1"
+  local manifest_file="${repo_bundle_dir}/untracked.paths.b64"
+  local tar_file="${repo_bundle_dir}/untracked.tar"
+  local encoded_path raw_path
+
+  if [[ -f "${manifest_file}" ]]; then
+    while IFS= read -r encoded_path || [[ -n "${encoded_path}" ]]; do
+      [[ -z "${encoded_path}" ]] && continue
+      printf "%s\n" "${encoded_path}"
+    done < "${manifest_file}"
+    return 0
+  fi
+
+  if [[ ! -f "${tar_file}" ]]; then
+    return 0
+  fi
+
+  while IFS= read -r raw_path || [[ -n "${raw_path}" ]]; do
+    [[ -z "${raw_path}" ]] && continue
+    raw_path="$(printf "%b" "${raw_path}")"
+    _git_snapshot_compare_emit_encoded_path "${raw_path}"
+  done < <(tar -tf "${tar_file}")
 }
 
 _git_snapshot_compare_collect_snapshot_files() {
@@ -1804,7 +1789,7 @@ _git_snapshot_compare_collect_snapshot_files() {
   {
     _git_snapshot_compare_collect_patch_files "${repo_bundle_dir}/staged.patch"
     _git_snapshot_compare_collect_patch_files "${repo_bundle_dir}/unstaged.patch"
-    _git_snapshot_inspect_tar_files "${repo_bundle_dir}/untracked.tar"
+    _git_snapshot_compare_collect_untracked_paths "${repo_bundle_dir}"
   } | sed '/^$/d' | LC_ALL=C sort -u
 }
 
@@ -2013,85 +1998,6 @@ _git_snapshot_compare_materialize_current_repo() {
   GSN_COMPARE_MATERIALIZED_CURRENT_REPO="${materialized_repo}"
 }
 
-_git_snapshot_compare_classify_file() {
-  local repo_abs="$1"
-  local snapshot_materialized_repo="$2"
-  local current_materialized_repo="$3"
-  local file_path="$4"
-
-  local snapshot_present="false"
-  local snapshot_mode=""
-  local snapshot_hash=""
-  local current_present="false"
-  local current_mode=""
-  local current_hash=""
-  local head_present="false"
-  local head_mode=""
-  local head_hash=""
-
-  GSN_COMPARE_FILE_STATUS=""
-  GSN_COMPARE_FILE_REASON=""
-
-  _git_snapshot_compare_capture_fs_signature "${snapshot_materialized_repo}" "${file_path}"
-  snapshot_present="${GSN_COMPARE_SIG_PRESENT}"
-  snapshot_mode="${GSN_COMPARE_SIG_MODE}"
-  snapshot_hash="${GSN_COMPARE_SIG_HASH}"
-
-  _git_snapshot_compare_capture_fs_signature "${current_materialized_repo}" "${file_path}"
-  current_present="${GSN_COMPARE_SIG_PRESENT}"
-  current_mode="${GSN_COMPARE_SIG_MODE}"
-  current_hash="${GSN_COMPARE_SIG_HASH}"
-
-  if [[ "${snapshot_present}" == "true" ]]; then
-    if [[ "${current_present}" != "true" ]]; then
-      GSN_COMPARE_FILE_STATUS="unresolved_missing"
-      GSN_COMPARE_FILE_REASON="snapshot target path is missing from working tree"
-      return 0
-    fi
-
-    if ! _git_snapshot_compare_signatures_match       "${snapshot_present}" "${snapshot_mode}" "${snapshot_hash}"       "${current_present}" "${current_mode}" "${current_hash}"; then
-
-      GSN_COMPARE_FILE_STATUS="unresolved_diverged"
-      GSN_COMPARE_FILE_REASON="current content or mode diverges from snapshot target"
-      return 0
-    fi
-
-    _git_snapshot_compare_capture_head_signature "${repo_abs}" "${file_path}"
-    head_present="${GSN_COMPARE_SIG_PRESENT}"
-    head_mode="${GSN_COMPARE_SIG_MODE}"
-    head_hash="${GSN_COMPARE_SIG_HASH}"
-
-    if _git_snapshot_compare_signatures_match       "${snapshot_present}" "${snapshot_mode}" "${snapshot_hash}"       "${head_present}" "${head_mode}" "${head_hash}"; then
-
-      GSN_COMPARE_FILE_STATUS="resolved_committed"
-      GSN_COMPARE_FILE_REASON="snapshot target content and mode match HEAD and working tree"
-      return 0
-    fi
-
-    GSN_COMPARE_FILE_STATUS="resolved_uncommitted"
-    GSN_COMPARE_FILE_REASON="snapshot target content and mode match working tree but not HEAD"
-    return 0
-  fi
-
-  if [[ "${current_present}" == "true" ]]; then
-    GSN_COMPARE_FILE_STATUS="unresolved_diverged"
-    GSN_COMPARE_FILE_REASON="path still exists while snapshot target removes it"
-    return 0
-  fi
-
-  _git_snapshot_compare_capture_head_signature "${repo_abs}" "${file_path}"
-  head_present="${GSN_COMPARE_SIG_PRESENT}"
-
-  if [[ "${head_present}" == "true" ]]; then
-    GSN_COMPARE_FILE_STATUS="resolved_uncommitted"
-    GSN_COMPARE_FILE_REASON="snapshot target removes this path and working tree matches"
-    return 0
-  fi
-
-  GSN_COMPARE_FILE_STATUS="resolved_committed"
-  GSN_COMPARE_FILE_REASON="snapshot target removes this path and HEAD matches"
-}
-
 _git_snapshot_compare_render_file_diff() {
   local snapshot_materialized_repo="$1"
   local current_materialized_repo="$2"
@@ -2100,8 +2006,10 @@ _git_snapshot_compare_render_file_diff() {
 
   local snapshot_abs="${snapshot_materialized_repo}/${file_path}"
   local current_abs="${current_materialized_repo}/${file_path}"
-  local current_label="current:${file_path}"
-  local snapshot_label="snapshot:${file_path}"
+  local display_path=""
+  display_path="$(_git_snapshot_compare_sanitize_porcelain_value "${file_path}")"
+  local current_label="current:${display_path}"
+  local snapshot_label="snapshot:${display_path}"
 
   local snapshot_present="false"
   local snapshot_mode=""
@@ -2156,15 +2064,19 @@ _git_snapshot_compare_print_grouped_rows() {
   local show_diff="${3:-false}"
 
   local current_repo=""
-  local row_repo row_file row_status _row_reason row_diff_file
+  local row_repo row_file_b64 row_file row_status _row_reason row_diff_file human_repo_label
 
-  while IFS=$'\t' read -r row_repo row_file row_status _row_reason row_diff_file; do
+  while IFS=$'\t' read -r row_repo row_file_b64 row_status _row_reason row_diff_file; do
     [[ -z "${row_repo}" ]] && continue
     if [[ "${current_repo}" != "${row_repo}" ]]; then
       current_repo="${row_repo}"
-      printf "\nRepo: %s\n" "$(_git_snapshot_human_repo_label "${root_repo}" "${row_repo}")"
+      human_repo_label="$(_git_snapshot_human_repo_label "${root_repo}" "${row_repo}")"
+      printf "\nRepo: %s\n" "$(_git_snapshot_compare_sanitize_porcelain_value "${human_repo_label}")"
     fi
-    printf "  - %s [%s]\n" "${row_file}" "${row_status}"
+    if ! row_file="$(_git_snapshot_compare_decode_path "${row_file_b64}")"; then
+      row_file="<invalid compare path>"
+    fi
+    printf "  - %s [%s]\n" "$(_git_snapshot_compare_sanitize_porcelain_value "${row_file}")" "${row_status}"
     if [[ "${show_diff}" == "true" && -n "${row_diff_file}" && -s "${row_diff_file}" ]]; then
       cat "${row_diff_file}"
     fi
@@ -2252,6 +2164,32 @@ _git_snapshot_compare_resolve_jobs() {
     return 0
   fi
   printf "%s" "${raw}"
+}
+
+_git_snapshot_compare_open_worker_queue() {
+  local queue_dir=""
+  local queue_fifo=""
+
+  # Use a private temp directory so compare never relies on shared-path
+  # reservation semantics from mktemp -u.
+  queue_dir="$(mktemp -d 2>/dev/null || true)"
+  if [[ -z "${queue_dir}" || ! -d "${queue_dir}" ]]; then
+    return 1
+  fi
+
+  queue_fifo="${queue_dir}/workers.fifo"
+  if ! mkfifo "${queue_fifo}"; then
+    rm -rf "${queue_dir}"
+    return 1
+  fi
+
+  if ! exec 9<>"${queue_fifo}"; then
+    rm -rf "${queue_dir}"
+    return 1
+  fi
+
+  rm -f "${queue_fifo}"
+  rmdir "${queue_dir}" 2>/dev/null || true
 }
 
 _git_snapshot_compare_cache_root_for_repo() {
@@ -2358,7 +2296,7 @@ _git_snapshot_compare_read_counts_file() {
 _git_snapshot_compare_collect_index_signatures() {
   local repo_dir="$1"
   local out_file="$2"
-  local row meta file_path mode oid stage_meta
+  local row meta file_path mode oid stage_meta encoded_path
 
   : > "${out_file}"
 
@@ -2373,14 +2311,15 @@ _git_snapshot_compare_collect_index_signatures() {
     mode="${meta%% *}"
     stage_meta="${meta#* }"
     oid="${stage_meta%% *}"
-    printf "%s\t%s\t%s\n" "${file_path}" "${mode}" "${oid}" >> "${out_file}"
+    encoded_path="$(_git_snapshot_store_base64_encode "${file_path}")"
+    printf "%s\t%s\t%s\n" "${encoded_path}" "${mode}" "${oid}" >> "${out_file}"
   done < <(git -C "${repo_dir}" ls-files -s -z)
 }
 
 _git_snapshot_compare_collect_head_signatures() {
   local repo_abs="$1"
   local out_file="$2"
-  local row meta file_path mode entry_type object_id rest
+  local row meta file_path mode entry_type object_id rest encoded_path
 
   : > "${out_file}"
 
@@ -2400,7 +2339,8 @@ _git_snapshot_compare_collect_head_signatures() {
 
     case "${entry_type}" in
       blob|commit|tree)
-        printf "%s\t%s\t%s\n" "${file_path}" "${mode}" "${object_id}" >> "${out_file}"
+        encoded_path="$(_git_snapshot_store_base64_encode "${file_path}")"
+        printf "%s\t%s\t%s\n" "${encoded_path}" "${mode}" "${object_id}" >> "${out_file}"
         ;;
     esac
   done < <(git -C "${repo_abs}" ls-tree --full-tree -r -z HEAD)
@@ -2880,8 +2820,13 @@ _git_snapshot_compare_engine() {
   local cache_miss_repos=0
 
   if [[ "${porcelain}" == "true" ]]; then
+    local safe_snapshot_root safe_current_root safe_selection_mode safe_snapshot_origin
+    safe_snapshot_root="$(_git_snapshot_compare_sanitize_porcelain_value "${snapshot_meta_root}")"
+    safe_current_root="$(_git_snapshot_compare_sanitize_porcelain_value "${root_repo}")"
+    safe_selection_mode="$(_git_snapshot_compare_sanitize_porcelain_value "${selection_mode}")"
+    safe_snapshot_origin="$(_git_snapshot_compare_sanitize_porcelain_value "${snapshot_meta_origin}")"
     printf "compare_target\tselected_snapshot_id=%s\tselection_mode=%s\tsnapshot_origin=%s\tsnapshot_root=%s\tcurrent_root=%s\tshow_all=%s\tshow_diff=%s\n" \
-      "${snapshot_id}" "${selection_mode}" "${snapshot_meta_origin}" "${snapshot_meta_root}" "${root_repo}" "${show_all}" "${show_diff}"
+      "${snapshot_id}" "${safe_selection_mode}" "${safe_snapshot_origin}" "${safe_snapshot_root}" "${safe_current_root}" "${show_all}" "${show_diff}"
   fi
 
   local repo_id rel_path snapshot_head status_hash task_idx=0
@@ -2901,17 +2846,12 @@ _git_snapshot_compare_engine() {
   done < <(_git_snapshot_store_read_repo_entries "${snapshot_path}")
 
   if [[ "${repos_checked}" -gt 0 ]]; then
-    local semaphore_fifo
-    semaphore_fifo="$(mktemp -u)"
-    if ! mkfifo "${semaphore_fifo}"; then
+    if ! _git_snapshot_compare_open_worker_queue; then
       _git_snapshot_ui_err "Failed to initialize compare worker queue."
       rm -rf "${diff_store_dir}" "${results_dir}"
       rm -f "${rows_file}" "${tasks_file}"
       return 1
     fi
-
-    exec 9<>"${semaphore_fifo}"
-    rm -f "${semaphore_fifo}"
 
     local j token worker_idx worker_repo_id worker_rel_path worker_snapshot_head worker_snapshot_status_hash
     for (( j=0; j<jobs; j++ )); do
@@ -3007,9 +2947,22 @@ _git_snapshot_compare_engine() {
 
     local diff_snapshot_materialized_repo=""
     local diff_current_materialized_repo=""
-    local row_file row_status row_reason
-    while IFS=$'\t' read -r row_file row_status row_reason; do
-      [[ -z "${row_file}" ]] && continue
+    local row_file_b64 row_file row_status row_reason
+    while IFS=$'\t' read -r row_file_b64 row_status row_reason; do
+      [[ -z "${row_file_b64}" ]] && continue
+      if ! row_file="$(_git_snapshot_compare_decode_path "${row_file_b64}")"; then
+        GSN_COMPARE_ERROR_ID="compare_path_decode_failed"
+        GSN_COMPARE_ERROR_STAGE="row_decode"
+        GSN_COMPARE_ERROR_MESSAGE="Failed to decode compare row path."
+        GSN_COMPARE_ERROR_REPO="${merge_rel_path}"
+        _git_snapshot_ui_err "Failed to decode compare row path."
+        if [[ "${porcelain}" == "true" ]]; then
+          _git_snapshot_compare_emit_porcelain_error "${snapshot_id}" "${merge_rel_path}"
+        fi
+        rm -rf "${diff_store_dir}" "${results_dir}" "${diff_snapshot_materialized_repo}" "${diff_current_materialized_repo}"
+        rm -f "${rows_file}" "${tasks_file}"
+        return 1
+      fi
       if [[ "${show_all}" != "true" && "${row_status}" != unresolved_* ]]; then
         continue
       fi
@@ -3050,7 +3003,7 @@ _git_snapshot_compare_engine() {
         fi
       fi
 
-      printf "%s\t%s\t%s\t%s\t%s\n" "${merge_rel_path}" "${row_file}" "${row_status}" "${row_reason}" "${diff_payload_file}" >> "${rows_file}"
+      printf "%s\t%s\t%s\t%s\t%s\n" "${merge_rel_path}" "${row_file_b64}" "${row_status}" "${row_reason}" "${diff_payload_file}" >> "${rows_file}"
       shown_files=$((shown_files + 1))
     done < "${worker_rows_file}"
 
@@ -3067,12 +3020,25 @@ _git_snapshot_compare_engine() {
   fi
 
   if [[ "${porcelain}" == "true" ]]; then
-    local row_repo row_file row_status row_reason row_diff_file safe_reason
-    while IFS=$'\t' read -r row_repo row_file row_status row_reason row_diff_file; do
+    local row_repo row_file_b64 row_file row_status row_reason row_diff_file safe_reason safe_file safe_repo
+    while IFS=$'\t' read -r row_repo row_file_b64 row_status row_reason row_diff_file; do
       [[ -z "${row_repo}" ]] && continue
+      if ! row_file="$(_git_snapshot_compare_decode_path "${row_file_b64}")"; then
+        GSN_COMPARE_ERROR_ID="compare_path_decode_failed"
+        GSN_COMPARE_ERROR_STAGE="porcelain_row_decode"
+        GSN_COMPARE_ERROR_MESSAGE="Failed to decode compare output path."
+        GSN_COMPARE_ERROR_REPO="${row_repo}"
+        _git_snapshot_ui_err "Failed to decode compare output path."
+        _git_snapshot_compare_emit_porcelain_error "${snapshot_id}" "${row_repo}"
+        rm -rf "${diff_store_dir}" "${results_dir}"
+        rm -f "${rows_file}" "${tasks_file}"
+        return 1
+      fi
+      safe_repo="$(_git_snapshot_compare_sanitize_porcelain_value "${row_repo}")"
+      safe_file="$(_git_snapshot_compare_sanitize_porcelain_value "${row_file}")"
       safe_reason="$(_git_snapshot_compare_sanitize_porcelain_value "${row_reason}")"
       printf "compare_file\tsnapshot_id=%s\trepo=%s\tfile=%s\tstatus=%s\treason=%s\n" \
-        "${snapshot_id}" "${row_repo}" "${row_file}" "${row_status}" "${safe_reason}"
+        "${snapshot_id}" "${safe_repo}" "${safe_file}" "${row_status}" "${safe_reason}"
     done < "${rows_file}"
 
     printf "compare_summary\tsnapshot_id=%s\trepos_checked=%s\tfiles_total=%s\tresolved_committed=%s\tresolved_uncommitted=%s\tunresolved_missing=%s\tunresolved_diverged=%s\tunresolved_total=%s\tshown_files=%s\tengine=v2\telapsed_ms=%s\tcache_hit_repos=%s\tcache_miss_repos=%s\tcontract_version=5\n" \
