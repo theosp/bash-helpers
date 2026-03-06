@@ -3061,6 +3061,8 @@ _git_snapshot_compare_engine() {
   printf "Diff details: %s\n" "$( [[ "${show_diff}" == "true" ]] && printf "on (unresolved_diverged rows include unified diffs)" || printf "off (add --diff to include unified diffs for unresolved_diverged rows)" )"
   printf "Repos checked: %s | snapshot files tracked: %s | unresolved: %s | resolved: %s\n" \
     "${repos_checked}" "${files_total}" "${unresolved_total}" "$((resolved_committed + resolved_uncommitted))"
+  printf "Compare telemetry: elapsed_ms=%s | cache_hit_repos=%s | cache_miss_repos=%s\n" \
+    "${elapsed_ms}" "${cache_hit_repos}" "${cache_miss_repos}"
 
   if [[ "${unresolved_total}" -eq 0 ]]; then
     printf "Compare: no unresolved snapshot work.\n"

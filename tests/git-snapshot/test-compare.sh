@@ -25,12 +25,15 @@ assert_contains "Snapshot compare: ${progress_snapshot_id}" "${compare_clean_out
 assert_contains "Selected snapshot mode: explicit" "${compare_clean_output}" "explicit compare should disclose target mode"
 assert_contains "Rows shown: unresolved only" "${compare_clean_output}" "default compare visibility should be unresolved only"
 assert_contains "Diff details: off (add --diff to include unified diffs for unresolved_diverged rows)" "${compare_clean_output}" "default compare should disclose how to enable unified diffs"
+assert_contains "Compare telemetry: elapsed_ms=" "${compare_clean_output}" "compare should disclose human telemetry"
+assert_contains "cache_hit_repos=0 | cache_miss_repos=1" "${compare_clean_output}" "first human compare should disclose cold-cache telemetry"
 assert_contains "Compare: no unresolved snapshot work." "${compare_clean_output}" "snapshot-aligned state should have no unresolved rows"
 assert_contains "No rows to display for current visibility filter." "${compare_clean_output}" "default compare should hide resolved rows"
 
 root_repo_basename="$(basename "${root_repo}")"
 compare_root_alias_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${progress_snapshot_id}" --repo "${root_repo_basename}")"
 assert_contains "Compare: no unresolved snapshot work." "${compare_root_alias_output}" "root folder-name alias should normalize to --repo ."
+assert_contains "cache_hit_repos=1 | cache_miss_repos=0" "${compare_root_alias_output}" "repeat human compare should disclose warm-cache telemetry"
 
 compare_all_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${progress_snapshot_id}" --repo . --all)"
 assert_contains "Rows shown: all statuses" "${compare_all_output}" "--all should include resolved rows"

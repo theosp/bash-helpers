@@ -28,6 +28,14 @@ assert_contains $'\tcache_hit_repos=0\tcache_miss_repos=1\tcontract_version=5' "
 second_compare="$(cd "${repo}" && git_snapshot_test_cmd compare "${snapshot_id}" --repo . --all --porcelain)"
 assert_contains $'\tcache_hit_repos=1\tcache_miss_repos=0\tcontract_version=5' "${second_compare}" "second compare should reuse persistent cache"
 
+first_compare_human="$(cd "${repo}" && git_snapshot_test_cmd compare "${snapshot_id}" --repo . --all)"
+assert_contains "Compare telemetry: elapsed_ms=" "${first_compare_human}" "human compare should expose telemetry"
+assert_contains "cache_hit_repos=1 | cache_miss_repos=0" "${first_compare_human}" "human compare should disclose warmed cache reuse after porcelain compare"
+
+status_invalidation_human="$(cd "${repo}" && printf "status-invalidation-human\n" >> tracked.txt && git_snapshot_test_cmd compare "${snapshot_id}" --repo . --all)"
+assert_contains "Compare telemetry: elapsed_ms=" "${status_invalidation_human}" "human compare should keep telemetry after invalidation"
+assert_contains "cache_hit_repos=0 | cache_miss_repos=1" "${status_invalidation_human}" "human compare should disclose cache invalidation"
+
 rows_first="$(printf "%s\n" "${first_compare}" | grep '^compare_file' || true)"
 rows_second="$(printf "%s\n" "${second_compare}" | grep '^compare_file' || true)"
 assert_eq "${rows_first}" "${rows_second}" "cache hit should preserve identical compare_file rows"
