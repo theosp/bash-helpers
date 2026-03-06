@@ -3,6 +3,10 @@ FUTURE
 * Stream `compare --gui` launcher output live while preserving clean crash
   diagnostics.
 
+* Add Playwright UI regression coverage for `compare --gui` and harden the
+  Node GUI for cached-row validation, inline load failures, responsive
+  layout, and external diff launching.
+
 v1.0.37 (2026-03-06)
 
 * Harden parallel `git-snapshot compare` worker queue setup:

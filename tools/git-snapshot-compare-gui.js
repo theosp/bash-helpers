@@ -8,6 +8,12 @@ const { spawn, spawnSync } = require("child_process");
 
 class CompareGuiError extends Error {}
 
+const UNKNOWN_COMPARE_ROW_ERROR = "File is not part of the currently cached compare rows. Click Refresh.";
+const FORCE_COMPARE_DATA_FAILURE = process.env.GIT_SNAPSHOT_GUI_TEST_FAIL_DATA === "1";
+const MELD_ACTIVATE_RETRIES = 30;
+const MELD_ACTIVATE_DELAY_SECONDS = 0.1;
+const SERVER_SHUTDOWN_GRACE_MS = 400;
+
 function parseArgs(argv) {
   const out = {
     rootRepo: "",
@@ -86,7 +92,17 @@ function rowKey(repoRel, filePath) {
   return `${repoRel}\t${filePath}`;
 }
 
+function findCompareRow(data, repoRel, filePath) {
+  const rows = data && Array.isArray(data.rows) ? data.rows : [];
+  const key = rowKey(repoRel, filePath);
+  return rows.find((row) => rowKey(row.repo || "", row.file || "") === key) || null;
+}
+
 function loadCompareData(args) {
+  if (FORCE_COMPARE_DATA_FAILURE) {
+    throw new CompareGuiError("Forced compare data load failure for test.");
+  }
+
   const cmd = [args.gitSnapshotBin, "compare", args.snapshotId, "--porcelain"];
   if (args.repoFilter) cmd.push("--repo", args.repoFilter);
   if (args.showAll === "true") cmd.push("--all");
@@ -149,6 +165,20 @@ function ensureDir(dirPath) {
   fs.mkdirSync(dirPath, { recursive: true });
 }
 
+function isPathInside(basePath, targetPath) {
+  const relativePath = path.relative(basePath, targetPath);
+  return relativePath === "" || (!relativePath.startsWith("..") && !path.isAbsolute(relativePath));
+}
+
+function resolveContainedPath(basePath, childPath, label) {
+  const resolvedBase = path.resolve(basePath);
+  const resolvedTarget = path.resolve(resolvedBase, childPath || ".");
+  if (!isPathInside(resolvedBase, resolvedTarget)) {
+    throw new CompareGuiError(`${label} escapes ${resolvedBase}.`);
+  }
+  return resolvedTarget;
+}
+
 class SnapshotFileResolver {
   constructor(rootRepo, snapshotId) {
     this.rootRepo = path.resolve(rootRepo);
@@ -168,7 +198,7 @@ class SnapshotFileResolver {
       throw new CompareGuiError(`Repo [${repoRel}] not found in snapshot metadata.`);
     }
 
-    const repoAbs = path.join(this.rootRepo, repoRel);
+    const repoAbs = resolveContainedPath(this.rootRepo, repoRel || ".", `Repo path for [${repoRel || "."}]`);
     if (!repoWorktreeExists(repoAbs)) {
       throw new CompareGuiError(
         `Repo path missing in working tree: ${repoAbs}\nRestore/check out repo and refresh.`
@@ -176,7 +206,7 @@ class SnapshotFileResolver {
     }
 
     const repoPart = repoComponent(repoRel);
-    const tempRepo = path.join(this.repoWorkDir, repoPart);
+    const tempRepo = resolveContainedPath(this.repoWorkDir, repoPart, `Compare workspace for repo [${repoRel}]`);
     rmRf(tempRepo);
     ensureDir(tempRepo);
 
@@ -185,7 +215,7 @@ class SnapshotFileResolver {
       throw new CompareGuiError(`Failed to initialize compare workspace for ${repoRel}.`);
     }
 
-    const tempRepoFile = path.join(tempRepo, filePath);
+    const tempRepoFile = resolveContainedPath(tempRepo, filePath, `Snapshot temp file for repo [${repoRel}]`);
     ensureDir(path.dirname(tempRepoFile));
 
     const showProc = spawnSync("git", ["-C", repoAbs, "show", `${repoMeta.snapshotHead}:${filePath}`], {
@@ -206,7 +236,16 @@ class SnapshotFileResolver {
       });
     }
 
-    const snapshotOut = path.join(this.snapshotFilesDir, repoPart, filePath);
+    const snapshotRepoDir = resolveContainedPath(
+      this.snapshotFilesDir,
+      repoPart,
+      `Snapshot output directory for repo [${repoRel}]`
+    );
+    const snapshotOut = resolveContainedPath(
+      snapshotRepoDir,
+      filePath,
+      `Snapshot output path for repo [${repoRel}]`
+    );
     ensureDir(path.dirname(snapshotOut));
     if (fs.existsSync(tempRepoFile)) {
       fs.copyFileSync(tempRepoFile, snapshotOut);
@@ -217,7 +256,8 @@ class SnapshotFileResolver {
   }
 
   currentFilePath(repoRel, filePath) {
-    return path.join(this.rootRepo, repoRel, filePath);
+    const repoAbs = resolveContainedPath(this.rootRepo, repoRel || ".", `Repo path for [${repoRel || "."}]`);
+    return resolveContainedPath(repoAbs, filePath, `Current file path for repo [${repoRel}]`);
   }
 }
 
@@ -244,6 +284,9 @@ function buildUnifiedDiff(currentFile, snapshotFile, relFilePath) {
 }
 
 function detectExternalDiffTool() {
+  const forcedTool = process.env.GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_TOOL || "";
+  if (forcedTool) return forcedTool;
+
   for (const candidate of ["meld", "opendiff", "code"]) {
     const check = run("which", [candidate], { encoding: "utf8" });
     if (check.status === 0) return candidate;
@@ -251,10 +294,69 @@ function detectExternalDiffTool() {
   return "";
 }
 
+function recordExternalDiffLaunch(tool, snapshotFile, currentFile) {
+  const logFile = process.env.GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_LOG || "";
+  if (!logFile) return false;
+
+  ensureDir(path.dirname(logFile));
+  fs.appendFileSync(
+    logFile,
+    `tool=${tool}\nsnapshot_file=${snapshotFile}\ncurrent_file=${currentFile}\nplatform=${process.platform}\n\n`,
+    "utf8"
+  );
+  return true;
+}
+
+function recordDetachedSpawn(command, args, childPid) {
+  const logFile = process.env.GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_SPAWN_LOG || "";
+  if (!logFile) return;
+
+  ensureDir(path.dirname(logFile));
+  const argsText = Array.isArray(args)
+    ? args.map((arg, index) => `arg_${index}=${arg}`).join("\n")
+    : "";
+
+  fs.appendFileSync(
+    logFile,
+    `command=${command}\nchild_pid=${childPid}\ndetached=true\n${argsText}\n\n`,
+    "utf8"
+  );
+}
+
+function spawnDetached(command, args) {
+  const child = spawn(command, args, { detached: true, stdio: "ignore" });
+  recordDetachedSpawn(command, args, child.pid);
+  child.unref();
+  return child;
+}
+
+function activateMeldForegroundMac() {
+  if (process.platform !== "darwin") return;
+  const script =
+    `repeat ${MELD_ACTIVATE_RETRIES} times\n` +
+    '  try\n' +
+    '    tell application "Meld" to activate\n' +
+    "    return\n" +
+    "  end try\n" +
+    `  delay ${MELD_ACTIVATE_DELAY_SECONDS}\n` +
+    "end repeat";
+  spawnDetached("osascript", ["-e", script]);
+}
+
 function launchExternalDiff(tool, snapshotFile, currentFile) {
   const args = tool === "code" ? ["--diff", snapshotFile, currentFile] : [snapshotFile, currentFile];
-  const child = spawn(tool, args, { detached: true, stdio: "ignore" });
-  child.unref();
+
+  if (recordExternalDiffLaunch(tool, snapshotFile, currentFile)) {
+    return;
+  }
+
+  // Launch the external tool in its own process group so stopping compare --gui
+  // does not also terminate the opened diff application.
+  spawnDetached(tool, args);
+
+  if (tool === "meld" && process.platform === "darwin") {
+    activateMeldForegroundMac();
+  }
 }
 
 function json(res, code, data) {
@@ -279,24 +381,61 @@ function htmlPage() {
   <style>
     :root { --bg: #f7f6f2; --panel: #fffefb; --ink: #1f1f1a; --muted: #6b6a62; --line: #d9d6c8; --accent: #1f6f5f; }
     * { box-sizing: border-box; }
-    body { margin: 0; background: linear-gradient(120deg, #f3f1e8, #ecebe4); color: var(--ink); font: 14px/1.4 Menlo, Monaco, Consolas, monospace; }
-    .top { padding: 10px 14px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,0.7); position: sticky; top: 0; backdrop-filter: blur(4px); }
+    html, body { height: 100%; overflow: hidden; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr);
+      background: linear-gradient(120deg, #f3f1e8, #ecebe4);
+      color: var(--ink);
+      font: 14px/1.4 Menlo, Monaco, Consolas, monospace;
+    }
+    .top { padding: 10px 14px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,0.7); backdrop-filter: blur(4px); }
     .title { font-weight: 700; }
     .meta, .summary { color: var(--muted); margin-top: 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .actions { margin-top: 8px; display: flex; gap: 8px; }
-    button { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 7px 10px; cursor: pointer; font: inherit; }
-    button:disabled { opacity: 0.45; cursor: not-allowed; }
-    .main { display: grid; grid-template-columns: minmax(260px, 38%) 1fr; height: calc(100vh - 115px); }
-    .left { border-right: 1px solid var(--line); overflow: auto; background: var(--panel); }
-    .right { overflow: auto; padding: 10px; }
+    .actions button { background: var(--accent); color: #fff; border: 0; border-radius: 6px; padding: 7px 10px; cursor: pointer; font: inherit; }
+    .actions button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .main { display: grid; grid-template-columns: minmax(260px, 38%) minmax(0, 1fr); min-height: 0; overflow: hidden; }
+    .left { border-right: 1px solid var(--line); overflow: auto; min-height: 0; background: var(--panel); }
+    .right { overflow: auto; min-height: 0; padding: 10px; }
     .repo { padding: 8px 10px; font-weight: 700; border-top: 1px solid var(--line); background: #f5f3ea; }
-    .row { padding: 6px 10px; cursor: pointer; border-top: 1px dashed #ece9dd; }
+    .row {
+      display: block;
+      width: 100%;
+      padding: 6px 10px;
+      color: var(--ink);
+      background: transparent;
+      border: 0;
+      border-top: 1px dashed #ece9dd;
+      text-align: left;
+      cursor: pointer;
+      font: inherit;
+    }
     .row:hover { background: #f0eee3; }
     .row.active { background: #e5f2ef; border-left: 3px solid var(--accent); padding-left: 7px; }
+    .row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
     .status { color: var(--muted); }
     .loading { color: var(--muted); font-style: italic; }
-    pre { margin: 0; white-space: pre; min-height: 100%; }
+    .error { color: #8a2b2b; }
+    pre { margin: 0; white-space: pre; }
     .empty { color: var(--muted); padding: 10px; }
+    @media (max-width: 700px) {
+      .top { padding: 10px 12px; }
+      .meta, .summary { white-space: normal; }
+      .actions { flex-wrap: wrap; }
+      .main {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(180px, 38vh) minmax(0, 1fr);
+      }
+      .left {
+        border-right: 0;
+        border-bottom: 1px solid var(--line);
+      }
+      .right { padding: 8px; }
+    }
   </style>
 </head>
 <body>
@@ -310,7 +449,7 @@ function htmlPage() {
     </div>
   </div>
   <div class="main">
-    <div id="list" class="left"></div>
+    <div id="list" class="left" role="group" aria-label="Compare rows"></div>
     <div class="right"><pre id="diff">Select a file to preview diff.</pre></div>
   </div>
   <script>
@@ -324,9 +463,61 @@ function htmlPage() {
     let selected = null;
     let diffCache = new Map();
     let selectionToken = 0;
+    let emptyStateMessage = "No rows to display.";
 
     function cacheKey(repo, file) {
       return String(repo || "") + "\\t" + String(file || "");
+    }
+
+    function rowButtons() {
+      return Array.from(listEl.querySelectorAll(".row"));
+    }
+
+    function setActiveRow(rowNode) {
+      for (const node of rowButtons()) {
+        const isActive = node === rowNode;
+        node.classList.toggle("active", isActive);
+        node.setAttribute("aria-selected", isActive ? "true" : "false");
+      }
+    }
+
+    function focusRowByIndex(index) {
+      const nodes = rowButtons();
+      if (!nodes.length) return;
+
+      const boundedIndex = Math.max(0, Math.min(nodes.length - 1, index));
+      const nextRow = nodes[boundedIndex];
+      if (!nextRow) return;
+
+      nextRow.focus();
+      nextRow.click();
+    }
+
+    function handleRowKeydown(event, rowNode) {
+      const nodes = rowButtons();
+      const currentIndex = nodes.indexOf(rowNode);
+      if (currentIndex === -1) return;
+
+      switch (event.key) {
+        case "ArrowDown":
+          event.preventDefault();
+          focusRowByIndex(currentIndex + 1);
+          break;
+        case "ArrowUp":
+          event.preventDefault();
+          focusRowByIndex(currentIndex - 1);
+          break;
+        case "Home":
+          event.preventDefault();
+          focusRowByIndex(0);
+          break;
+        case "End":
+          event.preventDefault();
+          focusRowByIndex(nodes.length - 1);
+          break;
+        default:
+          break;
+      }
     }
 
     function setDiffLoading(row) {
@@ -339,7 +530,39 @@ function htmlPage() {
       diffEl.textContent = text;
     }
 
+    function setListMessage(message, className) {
+      listEl.innerHTML = "";
+      const node = document.createElement("div");
+      node.className = className || "empty";
+      node.textContent = String(message || "");
+      listEl.appendChild(node);
+    }
+
+    function setListLoading(message) {
+      setListMessage(message || "Loading...", "empty loading");
+    }
+
+    function setListError(message) {
+      setListMessage(message || "Failed to load compare rows.", "empty error");
+    }
+
+    function renderLoadFailure(error) {
+      const message = error && error.message ? error.message : String(error);
+      rows = [];
+      selected = null;
+      diffCache = new Map();
+      selectionToken += 1;
+      emptyStateMessage = "No rows to display.";
+      openBtn.disabled = true;
+      metaEl.textContent = "Compare data unavailable.";
+      summaryEl.textContent = message;
+      setListError("Failed to load compare rows: " + message);
+      setDiffText("Unable to load compare rows.");
+    }
+
     async function loadData(forceRefresh) {
+      setListLoading("Loading compare rows...");
+      setDiffText("Loading compare rows...");
       const suffix = forceRefresh ? "?force=1" : "";
       const res = await fetch("/api/data" + suffix);
       const data = await res.json();
@@ -359,6 +582,13 @@ function htmlPage() {
         " files_total=" + (s.files_total || "?") +
         " unresolved_total=" + (s.unresolved_total || "?") +
         " shown_files=" + (s.shown_files || "?");
+      const unresolvedTotal = Number(s.unresolved_total || 0);
+      const filesTotal = Number(s.files_total || 0);
+      if (!rows.length && data.showAll !== "true" && unresolvedTotal === 0 && filesTotal > 0) {
+        emptyStateMessage = "No unresolved rows. Relaunch with --all to include resolved rows.";
+      } else {
+        emptyStateMessage = "No rows to display.";
+      }
       selected = null;
       openBtn.disabled = true;
       setDiffText(rows.length ? "Select a file to preview diff." : "No rows to display for current visibility filter.");
@@ -368,7 +598,7 @@ function htmlPage() {
     function renderList() {
       listEl.innerHTML = "";
       if (!rows.length) {
-        listEl.innerHTML = "<div class='empty'>No rows to display.</div>";
+        listEl.innerHTML = "<div class='empty'>" + emptyStateMessage + "</div>";
         return;
       }
       const grouped = {};
@@ -383,18 +613,20 @@ function htmlPage() {
         repoNode.textContent = repo;
         listEl.appendChild(repoNode);
         for (const row of grouped[repo]) {
-          const rowNode = document.createElement("div");
+          const rowNode = document.createElement("button");
+          rowNode.type = "button";
           rowNode.className = "row";
+          rowNode.setAttribute("aria-selected", "false");
           rowNode.textContent = (row.file || "(unknown)") + " [" + (row.status || "") + "]";
           rowNode.onclick = () => selectRow(row, rowNode);
+          rowNode.onkeydown = (event) => handleRowKeydown(event, rowNode);
           listEl.appendChild(rowNode);
         }
       }
     }
 
     async function selectRow(row, rowNode) {
-      for (const node of listEl.querySelectorAll(".row.active")) node.classList.remove("active");
-      rowNode.classList.add("active");
+      setActiveRow(rowNode);
       selected = row;
       openBtn.disabled = false;
       const key = cacheKey(row.repo, row.file);
@@ -432,13 +664,13 @@ function htmlPage() {
       try {
         await loadData(true);
       } catch (err) {
-        alert(String(err));
+        renderLoadFailure(err);
       } finally {
         refreshBtn.disabled = false;
       }
     };
     openBtn.onclick = () => openExternal().catch(err => alert(String(err)));
-    loadData(false).catch(err => { setDiffText(String(err)); });
+    loadData(false).catch(err => { renderLoadFailure(err); });
   </script>
 </body>
 </html>`;
@@ -485,9 +717,14 @@ function startServer(args) {
   };
 
   function refreshCompareCache() {
+    const startedAt = Date.now();
+    console.log("Loading compare data...");
     state.compareData = loadCompareData(args);
     state.compareLoadedAt = Date.now();
     state.diffCache.clear();
+    const elapsedMs = state.compareLoadedAt - startedAt;
+    const rowCount = (state.compareData && Array.isArray(state.compareData.rows)) ? state.compareData.rows.length : 0;
+    console.log(`Compare data loaded in ${elapsedMs}ms (rows=${rowCount}).`);
     return state.compareData;
   }
 
@@ -526,12 +763,12 @@ function startServer(args) {
           return;
         }
         const data = getCompareCache();
-        const key = rowKey(repoRel, filePath);
-        const known = data.rows.some((row) => rowKey(row.repo || "", row.file || "") === key);
-        if (!known) {
-          text(res, 404, "File is not part of the currently cached compare rows. Click Refresh.");
+        const knownRow = findCompareRow(data, repoRel, filePath);
+        if (!knownRow) {
+          text(res, 404, UNKNOWN_COMPARE_ROW_ERROR);
           return;
         }
+        const key = rowKey(knownRow.repo || "", knownRow.file || "");
         const cached = state.diffCache.get(key);
         if (cached) {
           text(res, 200, cached.diffText);
@@ -556,16 +793,22 @@ function startServer(args) {
           json(res, 400, { ok: false, error: "Missing repo/file query parameters." });
           return;
         }
+        const data = getCompareCache();
+        const knownRow = findCompareRow(data, repoRel, filePath);
+        if (!knownRow) {
+          json(res, 404, { ok: false, error: UNKNOWN_COMPARE_ROW_ERROR });
+          return;
+        }
         const tool = detectExternalDiffTool();
         if (!tool) {
           json(res, 200, { ok: false, error: "No external diff tool found. Install meld, opendiff, or code." });
           return;
         }
-        const key = rowKey(repoRel, filePath);
+        const key = rowKey(knownRow.repo || "", knownRow.file || "");
         let cached = state.diffCache.get(key);
         if (!cached) {
-          const snapshotFile = resolver.materializeSnapshotFile(repoRel, filePath);
-          const currentFile = resolver.currentFilePath(repoRel, filePath);
+          const snapshotFile = resolver.materializeSnapshotFile(knownRow.repo || "", knownRow.file || "");
+          const currentFile = resolver.currentFilePath(knownRow.repo || "", knownRow.file || "");
           cached = {
             diffText: "",
             snapshotFile: snapshotFile,
@@ -607,10 +850,14 @@ function startServer(args) {
         return;
       }
       const url = `http://127.0.0.1:${port}/`;
-      const opener = launchBrowser(url);
       console.log(`Compare GUI server: ${url}`);
-      if (opener) console.log(`Opened in browser via: ${opener}`);
-      else console.log(`Open URL manually in a browser.`);
+      if (process.env.GIT_SNAPSHOT_GUI_NO_BROWSER === "1") {
+        console.log("Browser launch skipped by GIT_SNAPSHOT_GUI_NO_BROWSER=1.");
+      } else {
+        const opener = launchBrowser(url);
+        if (opener) console.log(`Opened in browser via: ${opener}`);
+        else console.log("Open URL manually in a browser.");
+      }
       console.log(`Press Ctrl-C to stop the GUI server.`);
       resolve({ server, sockets });
     });
@@ -643,7 +890,7 @@ async function main() {
     runtime.server.close(() => process.exit(exitCode));
     for (const socket of runtime.sockets) socket.destroy();
 
-    shutdownTimer = setTimeout(() => process.exit(exitCode), 400);
+    shutdownTimer = setTimeout(() => process.exit(exitCode), SERVER_SHUTDOWN_GRACE_MS);
     if (shutdownTimer && typeof shutdownTimer.unref === "function") {
       shutdownTimer.unref();
     }
