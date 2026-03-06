@@ -3091,6 +3091,9 @@ _git_snapshot_compare_launch_gui() {
   local gui_output=""
   local gui_status=0
   local line=""
+  local stream_output="${GIT_SNAPSHOT_GUI_STREAM_OUTPUT:-0}"
+  local gui_log_file=""
+  local node_wrapper_script=""
 
   local core_dir helpers_root gui_script snapshot_bin
   core_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
@@ -3108,13 +3111,42 @@ _git_snapshot_compare_launch_gui() {
     return 1
   fi
 
-  gui_output="$(node "${gui_script}" \
-    --root-repo "${root_repo}" \
-    --snapshot-id "${snapshot_id}" \
-    --selection-mode "${selection_mode}" \
-    --repo-filter "${repo_filter}" \
-    --show-all "${show_all}" \
-    --git-snapshot-bin "${snapshot_bin}" 2>&1)" || gui_status=$?
+  if [[ "${stream_output}" == "1" || "${stream_output}" == "true" ]]; then
+    gui_log_file="$(mktemp "${TMPDIR:-/tmp}/git-snapshot-gui.XXXXXX")" || {
+      _git_snapshot_ui_err "Failed to allocate compare --gui output log."
+      return 1
+    }
+
+    node_wrapper_script='const { spawn } = require("child_process"); const { constants } = require("os"); const child = spawn(process.execPath, process.argv.slice(1), { stdio: "inherit" }); child.on("error", (error) => { console.error(error && error.message ? error.message : String(error)); process.exit(1); }); child.on("exit", (code, signal) => { if (signal) { process.exit(128 + (constants.signals[signal] || 0)); return; } process.exit(code || 0); });'
+
+    set +e
+    node -e "${node_wrapper_script}" "${gui_script}" \
+      --root-repo "${root_repo}" \
+      --snapshot-id "${snapshot_id}" \
+      --selection-mode "${selection_mode}" \
+      --repo-filter "${repo_filter}" \
+      --show-all "${show_all}" \
+      --git-snapshot-bin "${snapshot_bin}" 2>&1 | tee "${gui_log_file}"
+    gui_status="${PIPESTATUS[0]}"
+    set -e
+
+    gui_output="$(cat "${gui_log_file}")"
+    rm -f "${gui_log_file}"
+
+    if [[ "${gui_status}" -eq 0 ]]; then
+      return 0
+    fi
+  fi
+
+  if [[ "${stream_output}" != "1" && "${stream_output}" != "true" ]]; then
+    gui_output="$(node "${gui_script}" \
+      --root-repo "${root_repo}" \
+      --snapshot-id "${snapshot_id}" \
+      --selection-mode "${selection_mode}" \
+      --repo-filter "${repo_filter}" \
+      --show-all "${show_all}" \
+      --git-snapshot-bin "${snapshot_bin}" 2>&1)" || gui_status=$?
+  fi
 
   if [[ "${gui_status}" -eq 0 ]]; then
     if [[ -n "${gui_output}" ]]; then

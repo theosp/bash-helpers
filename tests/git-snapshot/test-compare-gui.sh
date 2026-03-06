@@ -39,6 +39,15 @@ assert_contains "compare --gui crashed before opening the UI." "${gui_abort_outp
 assert_contains "node diagnostics:" "${gui_abort_output}" "compare --gui should include node diagnostics for launcher aborts"
 assert_not_contains "Abort trap: 6" "${gui_abort_output}" "compare --gui should suppress raw shell abort output"
 
+set +e
+gui_stream_abort_output="$(cd "${root_repo}" && GIT_SNAPSHOT_GUI_STREAM_OUTPUT=1 GIT_SNAPSHOT_GUI_FORCE_ABORT=1 git_snapshot_test_cmd compare "${snapshot_id}" --gui 2>&1)"
+gui_stream_abort_code=$?
+set -e
+assert_exit_code 1 "${gui_stream_abort_code}" "streamed compare --gui should still convert launcher aborts into a clean failure"
+assert_contains "compare --gui crashed before opening the UI." "${gui_stream_abort_output}" "streamed compare --gui should report launcher crash in plain language"
+assert_contains "node diagnostics:" "${gui_stream_abort_output}" "streamed compare --gui should still include node diagnostics"
+assert_not_contains "Abort trap: 6" "${gui_stream_abort_output}" "streamed compare --gui should suppress raw shell abort output"
+
 gui_diff_output="$(cd "${root_repo}" && GIT_SNAPSHOT_GUI_TEST_MODE=1 git_snapshot_test_cmd compare "${snapshot_id}" --diff --gui 2>&1)"
 assert_contains "compare --gui ignores --diff" "${gui_diff_output}" "gui compare should warn that --diff is ignored"
 assert_contains "GUI_TEST snapshot_id=${snapshot_id}" "${gui_diff_output}" "gui compare should still execute when --diff is also passed"

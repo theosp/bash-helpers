@@ -1,3 +1,8 @@
+FUTURE
+
+* Stream `compare --gui` launcher output live while preserving clean crash
+  diagnostics.
+
 v1.0.37 (2026-03-06)
 
 * Harden parallel `git-snapshot compare` worker queue setup:
