@@ -1669,7 +1669,7 @@ _git_snapshot_compare_hash_file() {
     return 1
   fi
 
-  shasum -a 256 "${file_path}" | awk '{print $1}'
+  shasum -a 256 < "${file_path}" | awk '{print $1}'
 }
 
 _git_snapshot_compare_hash_stdin() {
@@ -2293,6 +2293,101 @@ _git_snapshot_compare_read_counts_file() {
   if [[ ! "${GSN_COMPARE_COUNT_UNRESOLVED_DIVERGED}" =~ ^[0-9]+$ ]]; then GSN_COMPARE_COUNT_UNRESOLVED_DIVERGED=0; fi
 }
 
+_git_snapshot_compare_targeted_signature_limit() {
+  local raw="${GIT_SNAPSHOT_COMPARE_TARGETED_SIGNATURE_LIMIT:-200}"
+  if [[ ! "${raw}" =~ ^[0-9]+$ || "${raw}" -lt 1 ]]; then
+    printf "200"
+    return 0
+  fi
+  printf "%s" "${raw}"
+}
+
+_git_snapshot_compare_collect_targeted_index_signatures() {
+  local repo_dir="$1"
+  local target_files_file="$2"
+  local out_file="$3"
+  local encoded_path file_path abs_path
+  local row meta mode oid stage_meta
+  local -a present_paths=()
+
+  : > "${out_file}"
+
+  while IFS= read -r encoded_path || [[ -n "${encoded_path}" ]]; do
+    [[ -z "${encoded_path}" ]] && continue
+    if ! file_path="$(_git_snapshot_compare_decode_path "${encoded_path}")"; then
+      return 1
+    fi
+    abs_path="${repo_dir}/${file_path}"
+    if [[ -f "${abs_path}" || -L "${abs_path}" ]]; then
+      present_paths+=("${file_path}")
+    fi
+  done < "${target_files_file}"
+
+  if [[ "${#present_paths[@]}" -eq 0 ]]; then
+    return 0
+  fi
+
+  if ! git -C "${repo_dir}" add -A -- "${present_paths[@]}" >/dev/null 2>&1; then
+    return 1
+  fi
+
+  while IFS= read -r -d '' row; do
+    [[ -z "${row}" ]] && continue
+    meta="${row%%$'\t'*}"
+    file_path="${row#*$'\t'}"
+    mode="${meta%% *}"
+    stage_meta="${meta#* }"
+    oid="${stage_meta%% *}"
+    encoded_path="$(_git_snapshot_store_base64_encode "${file_path}")"
+    printf "%s\t%s\t%s\n" "${encoded_path}" "${mode}" "${oid}" >> "${out_file}"
+  done < <(git -C "${repo_dir}" ls-files -s -z -- "${present_paths[@]}")
+}
+
+_git_snapshot_compare_collect_targeted_head_signatures() {
+  local repo_abs="$1"
+  local target_files_file="$2"
+  local out_file="$3"
+  local encoded_path file_path row meta mode entry_type object_id rest
+  local -a target_paths=()
+
+  : > "${out_file}"
+
+  if ! git -C "${repo_abs}" rev-parse --verify -q HEAD >/dev/null 2>&1; then
+    return 0
+  fi
+
+  while IFS= read -r encoded_path || [[ -n "${encoded_path}" ]]; do
+    [[ -z "${encoded_path}" ]] && continue
+    if ! file_path="$(_git_snapshot_compare_decode_path "${encoded_path}")"; then
+      return 1
+    fi
+    target_paths+=("${file_path}")
+  done < "${target_files_file}"
+
+  if [[ "${#target_paths[@]}" -eq 0 ]]; then
+    return 0
+  fi
+
+  while IFS= read -r -d '' row; do
+    [[ -z "${row}" ]] && continue
+
+    meta="${row%%$'\t'*}"
+    file_path="${row#*$'\t'}"
+    encoded_path="$(_git_snapshot_store_base64_encode "${file_path}")"
+
+    mode="${meta%% *}"
+    rest="${meta#* }"
+    entry_type="${rest%% *}"
+    object_id="${rest##* }"
+
+    case "${entry_type}" in
+      blob|commit|tree)
+        printf "%s\t%s\t%s\n" "${encoded_path}" "${mode}" "${object_id}" >> "${out_file}"
+        ;;
+    esac
+  done < <(git -C "${repo_abs}" ls-tree --full-tree -r -z HEAD -- "${target_paths[@]}")
+}
+
 _git_snapshot_compare_collect_index_signatures() {
   local repo_dir="$1"
   local out_file="$2"
@@ -2560,6 +2655,9 @@ _git_snapshot_compare_process_repo_worker() {
   local snapshot_manifest_hash="none"
   local current_head="none"
   local current_status_hash="none"
+  local snapshot_file_count=0
+  local snapshot_bundle_has_payload="false"
+  local targeted_signature_limit=0
   local cache_key_hash=""
   local cache_family_dir="" cache_entry_dir="" cache_rows_file="" cache_counts_file=""
   local cache_tmp_dir=""
@@ -2591,10 +2689,18 @@ _git_snapshot_compare_process_repo_worker() {
   repo_abs="${root_repo}/${rel_path}"
 
   _git_snapshot_compare_collect_snapshot_files "${repo_bundle_dir}" > "${snapshot_files_file}"
+  snapshot_file_count="$(wc -l < "${snapshot_files_file}" | tr -d '[:space:]')"
+  if [[ ! "${snapshot_file_count}" =~ ^[0-9]+$ ]]; then
+    snapshot_file_count=0
+  fi
   snapshot_manifest_hash="$(_git_snapshot_compare_hash_file "${snapshot_files_file}" 2>/dev/null || true)"
   if [[ -z "${snapshot_manifest_hash}" ]]; then
     snapshot_manifest_hash="none"
   fi
+  if [[ -s "${repo_bundle_dir}/staged.patch" || -s "${repo_bundle_dir}/unstaged.patch" || -f "${repo_bundle_dir}/untracked.tar" || -f "${repo_bundle_dir}/untracked.paths.b64" ]]; then
+    snapshot_bundle_has_payload="true"
+  fi
+  targeted_signature_limit="$(_git_snapshot_compare_targeted_signature_limit)"
 
   if ! git -C "${repo_abs}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     current_head="repo_missing"
@@ -2639,7 +2745,9 @@ _git_snapshot_compare_process_repo_worker() {
     fi
   fi
 
-  if [[ "${current_head}" == "repo_missing" ]]; then
+  if [[ "${snapshot_file_count}" -eq 0 && "${snapshot_bundle_has_payload}" != "true" ]]; then
+    _git_snapshot_compare_write_counts_file "${counts_out}" "${files_total}" "${resolved_committed}" "${resolved_uncommitted}" "${unresolved_missing}" "${unresolved_diverged}"
+  elif [[ "${current_head}" == "repo_missing" ]]; then
     while IFS= read -r missing_file; do
       [[ -z "${missing_file}" ]] && continue
       files_total=$((files_total + 1))
@@ -2678,7 +2786,38 @@ _git_snapshot_compare_process_repo_worker() {
     }
     current_materialized_repo="${GSN_COMPARE_MATERIALIZED_CURRENT_REPO}"
 
-    if ! _git_snapshot_compare_collect_index_signatures "${snapshot_materialized_repo}" "${snapshot_sig_file}"; then
+    if [[ "${snapshot_file_count}" -le "${targeted_signature_limit}" ]]; then
+      if ! _git_snapshot_compare_collect_targeted_index_signatures "${snapshot_materialized_repo}" "${snapshot_files_file}" "${snapshot_sig_file}"; then
+        _git_snapshot_compare_write_worker_error_meta \
+          "${meta_out}" \
+          "compare_snapshot_signature_collect_failed" \
+          "snapshot_signature_collect" \
+          "Failed to collect snapshot signatures for compare." \
+          "${rel_path}"
+        cleanup_compare_worker
+        return 1
+      fi
+      if ! _git_snapshot_compare_collect_targeted_index_signatures "${current_materialized_repo}" "${snapshot_files_file}" "${current_sig_file}"; then
+        _git_snapshot_compare_write_worker_error_meta \
+          "${meta_out}" \
+          "compare_current_signature_collect_failed" \
+          "current_signature_collect" \
+          "Failed to collect current signatures for compare." \
+          "${rel_path}"
+        cleanup_compare_worker
+        return 1
+      fi
+      if ! _git_snapshot_compare_collect_targeted_head_signatures "${repo_abs}" "${snapshot_files_file}" "${head_sig_file}"; then
+        _git_snapshot_compare_write_worker_error_meta \
+          "${meta_out}" \
+          "compare_head_signature_collect_failed" \
+          "head_signature_collect" \
+          "Failed to collect HEAD signatures for compare." \
+          "${rel_path}"
+        cleanup_compare_worker
+        return 1
+      fi
+    elif ! _git_snapshot_compare_collect_index_signatures "${snapshot_materialized_repo}" "${snapshot_sig_file}"; then
       _git_snapshot_compare_write_worker_error_meta \
         "${meta_out}" \
         "compare_snapshot_signature_collect_failed" \
@@ -2688,7 +2827,7 @@ _git_snapshot_compare_process_repo_worker() {
       cleanup_compare_worker
       return 1
     fi
-    if ! _git_snapshot_compare_collect_index_signatures "${current_materialized_repo}" "${current_sig_file}"; then
+    if [[ "${snapshot_file_count}" -gt "${targeted_signature_limit}" ]] && ! _git_snapshot_compare_collect_index_signatures "${current_materialized_repo}" "${current_sig_file}"; then
       _git_snapshot_compare_write_worker_error_meta \
         "${meta_out}" \
         "compare_current_signature_collect_failed" \
@@ -2698,7 +2837,7 @@ _git_snapshot_compare_process_repo_worker() {
       cleanup_compare_worker
       return 1
     fi
-    if ! _git_snapshot_compare_collect_head_signatures "${repo_abs}" "${head_sig_file}"; then
+    if [[ "${snapshot_file_count}" -gt "${targeted_signature_limit}" ]] && ! _git_snapshot_compare_collect_head_signatures "${repo_abs}" "${head_sig_file}"; then
       _git_snapshot_compare_write_worker_error_meta \
         "${meta_out}" \
         "compare_head_signature_collect_failed" \
