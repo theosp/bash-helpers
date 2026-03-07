@@ -113,7 +113,10 @@ if (( compare_unresolved_warm_elapsed_seconds > compare_unresolved_elapsed_secon
   fail "Benchmark compare unresolved warm run (${compare_unresolved_warm_elapsed_seconds}s) exceeded cold run (${compare_unresolved_elapsed_seconds}s) + slack (${warm_slack_seconds}s)."
 fi
 
-printf "benchmark compare_elapsed_seconds=%s compare_warm_elapsed_seconds=%s compare_unresolved_elapsed_seconds=%s compare_unresolved_warm_elapsed_seconds=%s max_seconds=%s max_seconds_unresolved=%s warm_slack_seconds=%s tracked_files=%s untracked_files=%s\n" \
+compare_jobs="${GIT_SNAPSHOT_COMPARE_JOBS:-auto}"
+
+printf "benchmark jobs=%s compare_elapsed_seconds=%s compare_warm_elapsed_seconds=%s compare_unresolved_elapsed_seconds=%s compare_unresolved_warm_elapsed_seconds=%s max_seconds=%s max_seconds_unresolved=%s warm_slack_seconds=%s tracked_files=%s untracked_files=%s\n" \
+  "${compare_jobs}" \
   "${compare_elapsed_seconds}" \
   "${compare_warm_elapsed_seconds}" \
   "${compare_unresolved_elapsed_seconds}" \

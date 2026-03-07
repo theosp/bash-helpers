@@ -207,7 +207,7 @@ GIT_SNAPSHOT_COMPARE_CACHE=<0|1>
   Enable/disable persistent compare cache (default: 1).
 
 GIT_SNAPSHOT_COMPARE_JOBS=<n>
-  Override compare worker parallelism (default: auto min(cpu, 6)).
+  Override compare worker parallelism (default: auto min(cpu, 8)).
 
 GIT_SNAPSHOT_COMPARE_CACHE_MAX_ENTRIES=<n>
   Maximum cache entries per snapshot/repo family (default: 20).
@@ -2143,8 +2143,8 @@ _git_snapshot_compare_detect_default_jobs() {
   if [[ ! "${cpu_count}" =~ ^[0-9]+$ || "${cpu_count}" -lt 1 ]]; then
     cpu_count=1
   fi
-  if [[ "${cpu_count}" -gt 6 ]]; then
-    cpu_count=6
+  if [[ "${cpu_count}" -gt 8 ]]; then
+    cpu_count=8
   fi
 
   printf "%s" "${cpu_count}"
@@ -2985,6 +2985,10 @@ _git_snapshot_compare_engine() {
   done < <(_git_snapshot_store_read_repo_entries "${snapshot_path}")
 
   if [[ "${repos_checked}" -gt 0 ]]; then
+    if [[ "${jobs}" -gt "${repos_checked}" ]]; then
+      jobs="${repos_checked}"
+    fi
+
     if ! _git_snapshot_compare_open_worker_queue; then
       _git_snapshot_ui_err "Failed to initialize compare worker queue."
       rm -rf "${diff_store_dir}" "${results_dir}"
