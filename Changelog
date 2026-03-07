@@ -10,6 +10,9 @@ FUTURE
 * Expose compare cache telemetry in human output so cold and warm runs are
   visible without using porcelain.
 
+* Tune `git-snapshot compare` auto worker parallelism to `min(cpu, 8)` and
+  add a real-repo benchmark helper for cold and warm compare runs.
+
 * Speed up cold compare misses by limiting signature collection to
   snapshot-tracked paths and skipping truly empty snapshot bundles.
 
