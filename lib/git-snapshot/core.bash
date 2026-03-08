@@ -56,6 +56,7 @@ create [snapshot_id] [--clear] [--yes]
   Output contract:
   - final output line is always the snapshot id (including clear-failure cases)
   - informational lines can appear above it
+  - snapshot metadata format is `git_snapshot_meta_v4`
 
 reset-all [--snapshot|--no-snapshot] [--porcelain]
   Clears root-most repo + initialized recursive submodules:
@@ -164,6 +165,9 @@ compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--gui] [--porcelain]
   - `--diff`            : include unified diffs for `unresolved_diverged` rows
   - `--gui`             : launch visual compare UI (incompatible with `--porcelain`)
   - `--porcelain`       : machine output (`compare_target` / `compare_file` / `compare_summary`, contract_version=5)
+  Snapshot integrity:
+  - compare requires `git_snapshot_meta_v4` metadata and intact compare-target metadata
+  - corrupt or unsupported snapshots fail instead of rebuilding fallback inputs
   Exit codes:
   - 0 : compare completed
   - 1 : usage/runtime error
@@ -259,6 +263,8 @@ Troubleshooting
   one or more repos are not restore-compatible in current state.
 - compare shows unresolved rows:
   snapshot work was not fully applied in current tree (missing/diverged).
+- compare fails with metadata errors:
+  snapshot is corrupt or unsupported; recreate it with current `git-snapshot`.
 - restore failed:
   inspect error details, then use safety snapshot id printed by restore flow.
 - restore exits 4:
@@ -384,6 +390,10 @@ _git_snapshot_create_internal() {
       for file_path in "${untracked_files[@]}"; do
         printf "%s\n" "$(_git_snapshot_store_base64_encode "${file_path}")" >> "${repo_dir}/untracked.paths.b64"
       done
+    fi
+
+    if ! _git_snapshot_compare_capture_repo_target_metadata "${repo_abs}" "${repo_dir}"; then
+      return 1
     fi
 
     _git_snapshot_store_write_repo_entry "${repos_tsv}" "${repo_id}" "${rel}" "${head}" "${status_hash}"
@@ -973,7 +983,7 @@ _git_snapshot_cmd_list() {
     while IFS= read -r snapshot_id; do
       [[ -z "${snapshot_id}" ]] && continue
       snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
-      _git_snapshot_store_load_snapshot_meta "${snapshot_path}"
+      _git_snapshot_store_load_snapshot_meta "${snapshot_path}" || return 1
       if [[ "${include_auto}" != "true" && "${SNAPSHOT_ORIGIN}" == "auto" ]]; then
         hidden_auto_count=$((hidden_auto_count + 1))
         continue
@@ -992,7 +1002,7 @@ _git_snapshot_cmd_list() {
   while IFS= read -r snapshot_id; do
     [[ -z "${snapshot_id}" ]] && continue
     snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
-    _git_snapshot_store_load_snapshot_meta "${snapshot_path}"
+    _git_snapshot_store_load_snapshot_meta "${snapshot_path}" || return 1
     if [[ "${include_auto}" != "true" && "${SNAPSHOT_ORIGIN}" == "auto" ]]; then
       hidden_auto_count=$((hidden_auto_count + 1))
       continue
@@ -1188,6 +1198,7 @@ _git_snapshot_cmd_inspect() {
   _git_snapshot_store_assert_snapshot_exists "${root_repo}" "${snapshot_id}"
   local snapshot_path
   snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
+  _git_snapshot_store_load_snapshot_meta "${snapshot_path}" || return 1
 
   if [[ -n "${repo_filter}" ]]; then
     _git_snapshot_validate_repo_filter "${snapshot_path}" "${repo_filter}"
@@ -1402,6 +1413,7 @@ _git_snapshot_cmd_restore_check() {
   _git_snapshot_store_assert_snapshot_exists "${root_repo}" "${snapshot_id}"
   local snapshot_path
   snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
+  _git_snapshot_store_load_snapshot_meta "${snapshot_path}" || return 1
 
   if [[ -n "${repo_filter}" ]]; then
     _git_snapshot_validate_repo_filter "${snapshot_path}" "${repo_filter}"
@@ -1631,6 +1643,115 @@ _git_snapshot_compare_decode_path() {
 _git_snapshot_compare_emit_encoded_path() {
   local file_path="$1"
   printf "%s\n" "$(_git_snapshot_store_base64_encode "${file_path}")"
+}
+
+_git_snapshot_compare_target_paths_file() {
+  local repo_bundle_dir="$1"
+  printf "%s/compare-target.paths.b64\n" "${repo_bundle_dir}"
+}
+
+_git_snapshot_compare_target_signatures_file() {
+  local repo_bundle_dir="$1"
+  printf "%s/compare-target.signatures.tsv\n" "${repo_bundle_dir}"
+}
+
+_git_snapshot_compare_target_meta_file() {
+  local repo_bundle_dir="$1"
+  printf "%s/compare-target.meta.env\n" "${repo_bundle_dir}"
+}
+
+_git_snapshot_compare_has_target_metadata() {
+  local repo_bundle_dir="$1"
+
+  [[ -f "$(_git_snapshot_compare_target_paths_file "${repo_bundle_dir}")" ]] \
+    && [[ -f "$(_git_snapshot_compare_target_signatures_file "${repo_bundle_dir}")" ]] \
+    && [[ -f "$(_git_snapshot_compare_target_meta_file "${repo_bundle_dir}")" ]]
+}
+
+_git_snapshot_compare_write_target_meta() {
+  local repo_bundle_dir="$1"
+  local files_total="$2"
+  local manifest_hash="$3"
+  local signature_hash="$4"
+  local meta_file=""
+
+  meta_file="$(_git_snapshot_compare_target_meta_file "${repo_bundle_dir}")"
+  {
+    printf "FORMAT=git_snapshot_compare_target_v1\n"
+    printf "FILES_TOTAL=%s\n" "${files_total}"
+    printf "MANIFEST_HASH=%s\n" "${manifest_hash}"
+    printf "SIGNATURE_HASH=%s\n" "${signature_hash}"
+  } > "${meta_file}"
+}
+
+_git_snapshot_compare_load_target_meta() {
+  local repo_bundle_dir="$1"
+  local meta_file=""
+  local line key value
+  local format=""
+
+  GSN_COMPARE_TARGET_META_FORMAT=""
+  GSN_COMPARE_TARGET_META_FILES_TOTAL=0
+  GSN_COMPARE_TARGET_META_MANIFEST_HASH=""
+  GSN_COMPARE_TARGET_META_SIGNATURE_HASH=""
+
+  meta_file="$(_git_snapshot_compare_target_meta_file "${repo_bundle_dir}")"
+  if [[ ! -f "${meta_file}" ]]; then
+    return 1
+  fi
+
+  while IFS= read -r line || [[ -n "${line}" ]]; do
+    [[ -z "${line}" ]] && continue
+    [[ "${line}" == *"="* ]] || return 1
+
+    key="${line%%=*}"
+    value="${line#*=}"
+    case "${key}" in
+      FORMAT) format="${value}" ;;
+      FILES_TOTAL) GSN_COMPARE_TARGET_META_FILES_TOTAL="${value}" ;;
+      MANIFEST_HASH) GSN_COMPARE_TARGET_META_MANIFEST_HASH="${value}" ;;
+      SIGNATURE_HASH) GSN_COMPARE_TARGET_META_SIGNATURE_HASH="${value}" ;;
+      *) return 1 ;;
+    esac
+  done < "${meta_file}"
+
+  if [[ "${format}" != "git_snapshot_compare_target_v1" ]]; then
+    return 1
+  fi
+  if [[ ! "${GSN_COMPARE_TARGET_META_FILES_TOTAL}" =~ ^[0-9]+$ ]]; then
+    return 1
+  fi
+  if [[ -z "${GSN_COMPARE_TARGET_META_MANIFEST_HASH}" || -z "${GSN_COMPARE_TARGET_META_SIGNATURE_HASH}" ]]; then
+    return 1
+  fi
+
+  GSN_COMPARE_TARGET_META_FORMAT="${format}"
+}
+
+_git_snapshot_compare_verify_target_metadata_integrity() {
+  local repo_bundle_dir="$1"
+  local paths_file=""
+  local signatures_file=""
+  local actual_manifest_hash=""
+  local actual_signature_hash=""
+
+  paths_file="$(_git_snapshot_compare_target_paths_file "${repo_bundle_dir}")"
+  signatures_file="$(_git_snapshot_compare_target_signatures_file "${repo_bundle_dir}")"
+
+  actual_manifest_hash="$(_git_snapshot_compare_hash_file "${paths_file}" 2>/dev/null || true)"
+  actual_signature_hash="$(_git_snapshot_compare_hash_file "${signatures_file}" 2>/dev/null || true)"
+
+  if [[ -z "${actual_manifest_hash}" || -z "${actual_signature_hash}" ]]; then
+    return 1
+  fi
+
+  if [[ "${actual_manifest_hash}" != "${GSN_COMPARE_TARGET_META_MANIFEST_HASH}" ]]; then
+    return 1
+  fi
+
+  if [[ "${actual_signature_hash}" != "${GSN_COMPARE_TARGET_META_SIGNATURE_HASH}" ]]; then
+    return 1
+  fi
 }
 
 _git_snapshot_compare_record_error() {
@@ -2302,6 +2423,126 @@ _git_snapshot_compare_targeted_signature_limit() {
   printf "%s" "${raw}"
 }
 
+_git_snapshot_compare_collect_temp_index_signatures() {
+  local repo_abs="$1"
+  local target_files_file="$2"
+  local out_file="$3"
+  local encoded_path file_path
+  local row meta mode oid stage_meta
+  local index_file=""
+  local index_source=""
+  local git_known_path=""
+  local -a target_paths=()
+  local -a add_paths=()
+
+  : > "${out_file}"
+
+  while IFS= read -r encoded_path || [[ -n "${encoded_path}" ]]; do
+    [[ -z "${encoded_path}" ]] && continue
+    if ! file_path="$(_git_snapshot_compare_decode_path "${encoded_path}")"; then
+      return 1
+    fi
+    target_paths+=("${file_path}")
+    git_known_path="$(git -C "${repo_abs}" ls-files --error-unmatch -- "${file_path}" 2>/dev/null || true)"
+    if [[ -n "${git_known_path}" ]] \
+      || [[ -f "${repo_abs}/${file_path}" || -L "${repo_abs}/${file_path}" ]]; then
+      add_paths+=("${file_path}")
+    fi
+  done < "${target_files_file}"
+
+  if [[ "${#target_paths[@]}" -eq 0 ]]; then
+    return 0
+  fi
+
+  index_file="$(mktemp)"
+  index_source="$(git -C "${repo_abs}" rev-parse --git-path index 2>/dev/null || true)"
+  if [[ -n "${index_source}" && "${index_source}" != /* ]]; then
+    index_source="${repo_abs}/${index_source}"
+  fi
+  if [[ -n "${index_source}" && -f "${index_source}" ]]; then
+    cp "${index_source}" "${index_file}"
+  else
+    rm -f "${index_file}"
+  fi
+
+  if [[ "${#add_paths[@]}" -gt 0 ]] && ! GIT_INDEX_FILE="${index_file}" git -C "${repo_abs}" add -A -- "${add_paths[@]}" >/dev/null 2>&1; then
+    rm -f "${index_file}"
+    return 1
+  fi
+
+  while IFS= read -r -d '' row; do
+    [[ -z "${row}" ]] && continue
+    meta="${row%%$'\t'*}"
+    file_path="${row#*$'\t'}"
+    mode="${meta%% *}"
+    stage_meta="${meta#* }"
+    oid="${stage_meta%% *}"
+    encoded_path="$(_git_snapshot_store_base64_encode "${file_path}")"
+    printf "%s\t%s\t%s\n" "${encoded_path}" "${mode}" "${oid}" >> "${out_file}"
+  done < <(GIT_INDEX_FILE="${index_file}" git -C "${repo_abs}" ls-files -s -z -- "${target_paths[@]}")
+
+  rm -f "${index_file}"
+}
+
+_git_snapshot_compare_capture_repo_target_metadata() {
+  local repo_abs="$1"
+  local repo_bundle_dir="$2"
+  local target_files_file=""
+  local target_signatures_file=""
+  local files_total=0
+  local manifest_hash=""
+  local signature_hash=""
+
+  target_files_file="$(_git_snapshot_compare_target_paths_file "${repo_bundle_dir}")"
+  target_signatures_file="$(_git_snapshot_compare_target_signatures_file "${repo_bundle_dir}")"
+
+  _git_snapshot_compare_collect_snapshot_files "${repo_bundle_dir}" > "${target_files_file}"
+  if ! _git_snapshot_compare_collect_temp_index_signatures "${repo_abs}" "${target_files_file}" "${target_signatures_file}"; then
+    _git_snapshot_ui_err "Failed to capture compare target signatures for ${repo_abs}."
+    return 1
+  fi
+
+  files_total="$(wc -l < "${target_files_file}" | tr -d '[:space:]')"
+  if [[ ! "${files_total}" =~ ^[0-9]+$ ]]; then
+    files_total=0
+  fi
+
+  manifest_hash="$(_git_snapshot_compare_hash_file "${target_files_file}" 2>/dev/null || true)"
+  signature_hash="$(_git_snapshot_compare_hash_file "${target_signatures_file}" 2>/dev/null || true)"
+  if [[ -z "${manifest_hash}" || -z "${signature_hash}" ]]; then
+    _git_snapshot_ui_err "Failed to hash compare target metadata for ${repo_abs}."
+    return 1
+  fi
+
+  _git_snapshot_compare_write_target_meta "${repo_bundle_dir}" "${files_total}" "${manifest_hash}" "${signature_hash}"
+}
+
+_git_snapshot_compare_filter_removed_gitlink_rows() {
+  local snapshot_sig_file="$1"
+  local current_sig_file="$2"
+  local filtered_file=""
+
+  filtered_file="$(mktemp)"
+  if [[ ! -s "${snapshot_sig_file}" ]]; then
+    awk -F $'\t' '$2 != "160000" { print }' "${current_sig_file}" > "${filtered_file}"
+  else
+    awk -F $'\t' '
+      NR == FNR {
+        snapshot_modes[$1] = $2
+        next
+      }
+      {
+        if ($2 == "160000" && !($1 in snapshot_modes)) {
+          next
+        }
+        print
+      }
+    ' "${snapshot_sig_file}" "${current_sig_file}" > "${filtered_file}"
+  fi
+
+  mv "${filtered_file}" "${current_sig_file}"
+}
+
 _git_snapshot_compare_collect_targeted_index_signatures() {
   local repo_dir="$1"
   local target_files_file="$2"
@@ -2566,15 +2807,17 @@ _git_snapshot_compare_write_worker_error_meta() {
 _git_snapshot_compare_write_worker_success_meta() {
   local meta_file="$1"
   local cache_hit="$2"
-  local files_total="$3"
-  local resolved_committed="$4"
-  local resolved_uncommitted="$5"
-  local unresolved_missing="$6"
-  local unresolved_diverged="$7"
+  local engine="$3"
+  local files_total="$4"
+  local resolved_committed="$5"
+  local resolved_uncommitted="$6"
+  local unresolved_missing="$7"
+  local unresolved_diverged="$8"
 
   {
     printf "worker_status=ok\n"
     printf "cache_hit=%s\n" "${cache_hit}"
+    printf "engine=%s\n" "${engine}"
     printf "files_total=%s\n" "${files_total}"
     printf "resolved_committed=%s\n" "${resolved_committed}"
     printf "resolved_uncommitted=%s\n" "${resolved_uncommitted}"
@@ -2589,6 +2832,7 @@ _git_snapshot_compare_read_worker_meta() {
 
   GSN_COMPARE_WORKER_STATUS=""
   GSN_COMPARE_WORKER_CACHE_HIT=0
+  GSN_COMPARE_WORKER_ENGINE=""
   GSN_COMPARE_WORKER_FILES_TOTAL=0
   GSN_COMPARE_WORKER_RESOLVED_COMMITTED=0
   GSN_COMPARE_WORKER_RESOLVED_UNCOMMITTED=0
@@ -2610,6 +2854,7 @@ _git_snapshot_compare_read_worker_meta() {
     case "${key}" in
       worker_status) GSN_COMPARE_WORKER_STATUS="${value}" ;;
       cache_hit) GSN_COMPARE_WORKER_CACHE_HIT="${value}" ;;
+      engine) GSN_COMPARE_WORKER_ENGINE="${value}" ;;
       files_total) GSN_COMPARE_WORKER_FILES_TOTAL="${value}" ;;
       resolved_committed) GSN_COMPARE_WORKER_RESOLVED_COMMITTED="${value}" ;;
       resolved_uncommitted) GSN_COMPARE_WORKER_RESOLVED_UNCOMMITTED="${value}" ;;
@@ -2632,122 +2877,141 @@ _git_snapshot_compare_read_worker_meta() {
   return 0
 }
 
-_git_snapshot_compare_process_repo_worker() {
+_git_snapshot_compare_process_repo_worker_v3() {
   local root_repo="$1"
   local snapshot_path="$2"
   local snapshot_id="$3"
   local cache_root="$4"
   local cache_enabled="$5"
   local cache_max_entries="$6"
-  local idx="$7"
-  local repo_id="$8"
-  local rel_path="$9"
-  local snapshot_head="${10}"
-  local snapshot_status_hash="${11}"
-  local results_dir="${12}"
+  local repo_id="$7"
+  local rel_path="$8"
+  local rows_out="${9}"
+  local counts_out="${10}"
+  local meta_out="${11}"
+  local repo_bundle_dir="${12}"
+  local repo_abs="${13}"
 
-  local rows_out="${results_dir}/${idx}.rows.tsv"
-  local counts_out="${results_dir}/${idx}.counts.env"
-  local meta_out="${results_dir}/${idx}.meta.env"
-  local repo_bundle_dir repo_abs
-  local snapshot_files_file snapshot_sig_file current_sig_file head_sig_file
-  local snapshot_materialized_repo="" current_materialized_repo=""
-  local snapshot_manifest_hash="none"
-  local current_head="none"
-  local current_status_hash="none"
-  local snapshot_file_count=0
-  local snapshot_bundle_has_payload="false"
-  local targeted_signature_limit=0
+  local snapshot_files_file=""
+  local snapshot_sig_file=""
+  local current_sig_file=""
+  local head_sig_file=""
   local cache_key_hash=""
   local cache_family_dir="" cache_entry_dir="" cache_rows_file="" cache_counts_file=""
   local cache_tmp_dir=""
+  local current_signature_hash=""
+  local head_signature_hash=""
   local missing_file
   local files_total=0 resolved_committed=0 resolved_uncommitted=0 unresolved_missing=0 unresolved_diverged=0
 
-  : > "${rows_out}"
-
-  snapshot_files_file="$(mktemp)"
-  snapshot_sig_file="$(mktemp)"
+  snapshot_files_file="$(_git_snapshot_compare_target_paths_file "${repo_bundle_dir}")"
+  snapshot_sig_file="$(_git_snapshot_compare_target_signatures_file "${repo_bundle_dir}")"
   current_sig_file="$(mktemp)"
   head_sig_file="$(mktemp)"
 
-  cleanup_compare_worker() {
-    rm -f "${snapshot_files_file:-}" "${snapshot_sig_file:-}" "${current_sig_file:-}" "${head_sig_file:-}"
+  cleanup_compare_worker_v3() {
+    rm -f "${current_sig_file:-}" "${head_sig_file:-}"
     rm -f "${counts_out:-}"
-    if [[ -n "${snapshot_materialized_repo:-}" ]]; then
-      rm -rf "${snapshot_materialized_repo}"
-    fi
-    if [[ -n "${current_materialized_repo:-}" ]]; then
-      rm -rf "${current_materialized_repo}"
-    fi
     if [[ -n "${cache_tmp_dir:-}" ]]; then
       rm -rf "${cache_tmp_dir}"
     fi
   }
 
-  repo_bundle_dir="$(_git_snapshot_store_repo_dir_for_id "${snapshot_path}" "${repo_id}")"
-  repo_abs="${root_repo}/${rel_path}"
+  if ! _git_snapshot_compare_load_target_meta "${repo_bundle_dir}"; then
+    _git_snapshot_compare_write_worker_error_meta \
+      "${meta_out}" \
+      "compare_target_metadata_invalid" \
+      "target_metadata_load" \
+      "Snapshot compare target metadata is invalid." \
+      "${rel_path}"
+    cleanup_compare_worker_v3
+    return 1
+  fi
 
-  _git_snapshot_compare_collect_snapshot_files "${repo_bundle_dir}" > "${snapshot_files_file}"
-  snapshot_file_count="$(wc -l < "${snapshot_files_file}" | tr -d '[:space:]')"
-  if [[ ! "${snapshot_file_count}" =~ ^[0-9]+$ ]]; then
-    snapshot_file_count=0
+  if ! _git_snapshot_compare_verify_target_metadata_integrity "${repo_bundle_dir}"; then
+    _git_snapshot_compare_write_worker_error_meta \
+      "${meta_out}" \
+      "compare_target_metadata_hash_mismatch" \
+      "target_metadata_integrity" \
+      "Snapshot compare target metadata failed integrity verification." \
+      "${rel_path}"
+    cleanup_compare_worker_v3
+    return 1
   fi
-  snapshot_manifest_hash="$(_git_snapshot_compare_hash_file "${snapshot_files_file}" 2>/dev/null || true)"
-  if [[ -z "${snapshot_manifest_hash}" ]]; then
-    snapshot_manifest_hash="none"
-  fi
-  if [[ -s "${repo_bundle_dir}/staged.patch" || -s "${repo_bundle_dir}/unstaged.patch" || -f "${repo_bundle_dir}/untracked.tar" || -f "${repo_bundle_dir}/untracked.paths.b64" ]]; then
-    snapshot_bundle_has_payload="true"
-  fi
-  targeted_signature_limit="$(_git_snapshot_compare_targeted_signature_limit)"
 
   if ! git -C "${repo_abs}" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-    current_head="repo_missing"
-    current_status_hash="repo_missing"
-  else
-    current_head="$(git -C "${repo_abs}" rev-parse --verify -q HEAD 2>/dev/null || true)"
-    if [[ -z "${current_head}" ]]; then
-      current_head="none"
+    current_signature_hash="repo_missing"
+    head_signature_hash="repo_missing"
+  elif [[ "${GSN_COMPARE_TARGET_META_FILES_TOTAL}" -gt 0 ]]; then
+    if ! _git_snapshot_compare_collect_temp_index_signatures "${repo_abs}" "${snapshot_files_file}" "${current_sig_file}"; then
+      _git_snapshot_compare_write_worker_error_meta \
+        "${meta_out}" \
+        "compare_current_signature_collect_failed" \
+        "current_signature_collect" \
+        "Failed to collect current signatures for compare." \
+        "${rel_path}"
+      cleanup_compare_worker_v3
+      return 1
     fi
-    current_status_hash="$(_git_snapshot_status_hash_for_repo "${repo_abs}")"
+    _git_snapshot_compare_filter_removed_gitlink_rows "${snapshot_sig_file}" "${current_sig_file}"
+    if ! _git_snapshot_compare_collect_targeted_head_signatures "${repo_abs}" "${snapshot_files_file}" "${head_sig_file}"; then
+      _git_snapshot_compare_write_worker_error_meta \
+        "${meta_out}" \
+        "compare_head_signature_collect_failed" \
+        "head_signature_collect" \
+        "Failed to collect HEAD signatures for compare." \
+        "${rel_path}"
+      cleanup_compare_worker_v3
+      return 1
+    fi
   fi
 
-  cache_key_hash="$(printf "engine=v2\nsnapshot_id=%s\nrepo_id=%s\nsnapshot_head=%s\nsnapshot_status_hash=%s\ncurrent_head=%s\ncurrent_status_hash=%s\nsnapshot_manifest_hash=%s\n" \
+  if [[ -z "${current_signature_hash}" ]]; then
+    current_signature_hash="$(_git_snapshot_compare_hash_file "${current_sig_file}" 2>/dev/null || true)"
+  fi
+  if [[ -z "${head_signature_hash}" ]]; then
+    head_signature_hash="$(_git_snapshot_compare_hash_file "${head_sig_file}" 2>/dev/null || true)"
+  fi
+  if [[ -z "${current_signature_hash}" ]]; then
+    current_signature_hash="none"
+  fi
+  if [[ -z "${head_signature_hash}" ]]; then
+    head_signature_hash="none"
+  fi
+
+  cache_key_hash="$(printf "engine=v3\nsnapshot_id=%s\nrepo_id=%s\nmanifest_hash=%s\nsnapshot_signature_hash=%s\ncurrent_signature_hash=%s\nhead_signature_hash=%s\n" \
     "${snapshot_id}" \
     "${repo_id}" \
-    "${snapshot_head}" \
-    "${snapshot_status_hash}" \
-    "${current_head}" \
-    "${current_status_hash}" \
-    "${snapshot_manifest_hash}" | _git_snapshot_compare_hash_stdin)"
+    "${GSN_COMPARE_TARGET_META_MANIFEST_HASH}" \
+    "${GSN_COMPARE_TARGET_META_SIGNATURE_HASH}" \
+    "${current_signature_hash}" \
+    "${head_signature_hash}" | _git_snapshot_compare_hash_stdin)"
 
   if [[ "${cache_enabled}" == "true" ]]; then
     cache_family_dir="${cache_root}/${snapshot_id}/${repo_id}"
     cache_entry_dir="${cache_family_dir}/${cache_key_hash}"
     cache_rows_file="${cache_entry_dir}/rows.tsv"
     cache_counts_file="${cache_entry_dir}/counts.env"
-    # rows.tsv can be legitimately empty when snapshot/files_total is zero;
-    # counts.env is the required validity signal for cache entries.
     if [[ -f "${cache_rows_file}" && -s "${cache_counts_file}" ]]; then
       cp "${cache_rows_file}" "${rows_out}" 2>/dev/null || true
       _git_snapshot_compare_read_counts_file "${cache_counts_file}"
       _git_snapshot_compare_write_worker_success_meta \
         "${meta_out}" \
         "1" \
+        "v3" \
         "${GSN_COMPARE_COUNT_FILES_TOTAL}" \
         "${GSN_COMPARE_COUNT_RESOLVED_COMMITTED}" \
         "${GSN_COMPARE_COUNT_RESOLVED_UNCOMMITTED}" \
         "${GSN_COMPARE_COUNT_UNRESOLVED_MISSING}" \
         "${GSN_COMPARE_COUNT_UNRESOLVED_DIVERGED}"
-      cleanup_compare_worker
+      cleanup_compare_worker_v3
       return 0
     fi
   fi
 
-  if [[ "${snapshot_file_count}" -eq 0 && "${snapshot_bundle_has_payload}" != "true" ]]; then
+  if [[ "${GSN_COMPARE_TARGET_META_FILES_TOTAL}" -eq 0 ]]; then
     _git_snapshot_compare_write_counts_file "${counts_out}" "${files_total}" "${resolved_committed}" "${resolved_uncommitted}" "${unresolved_missing}" "${unresolved_diverged}"
-  elif [[ "${current_head}" == "repo_missing" ]]; then
+  elif [[ "${current_signature_hash}" == "repo_missing" ]]; then
     while IFS= read -r missing_file; do
       [[ -z "${missing_file}" ]] && continue
       files_total=$((files_total + 1))
@@ -2756,98 +3020,6 @@ _git_snapshot_compare_process_repo_worker() {
     done < "${snapshot_files_file}"
     _git_snapshot_compare_write_counts_file "${counts_out}" "${files_total}" "${resolved_committed}" "${resolved_uncommitted}" "${unresolved_missing}" "${unresolved_diverged}"
   else
-    GSN_COMPARE_ACTIVE_REPO="${rel_path}"
-    GSN_COMPARE_ERROR_ID=""
-    GSN_COMPARE_ERROR_STAGE=""
-    GSN_COMPARE_ERROR_MESSAGE=""
-    GSN_COMPARE_ERROR_REPO=""
-
-    _git_snapshot_compare_materialize_snapshot_repo "${repo_abs}" "${snapshot_head}" "${repo_bundle_dir}" "${rel_path}" || {
-      _git_snapshot_compare_write_worker_error_meta \
-        "${meta_out}" \
-        "${GSN_COMPARE_ERROR_ID:-compare_snapshot_materialize_failed}" \
-        "${GSN_COMPARE_ERROR_STAGE:-snapshot_materialize}" \
-        "${GSN_COMPARE_ERROR_MESSAGE:-Failed to materialize snapshot repository for compare.}" \
-        "${rel_path}"
-      cleanup_compare_worker
-      return 1
-    }
-    snapshot_materialized_repo="${GSN_COMPARE_MATERIALIZED_REPO}"
-
-    _git_snapshot_compare_materialize_current_repo "${repo_abs}" "${rel_path}" || {
-      _git_snapshot_compare_write_worker_error_meta \
-        "${meta_out}" \
-        "${GSN_COMPARE_ERROR_ID:-compare_current_materialize_failed}" \
-        "${GSN_COMPARE_ERROR_STAGE:-current_materialize}" \
-        "${GSN_COMPARE_ERROR_MESSAGE:-Failed to materialize current repository for compare.}" \
-        "${rel_path}"
-      cleanup_compare_worker
-      return 1
-    }
-    current_materialized_repo="${GSN_COMPARE_MATERIALIZED_CURRENT_REPO}"
-
-    if [[ "${snapshot_file_count}" -le "${targeted_signature_limit}" ]]; then
-      if ! _git_snapshot_compare_collect_targeted_index_signatures "${snapshot_materialized_repo}" "${snapshot_files_file}" "${snapshot_sig_file}"; then
-        _git_snapshot_compare_write_worker_error_meta \
-          "${meta_out}" \
-          "compare_snapshot_signature_collect_failed" \
-          "snapshot_signature_collect" \
-          "Failed to collect snapshot signatures for compare." \
-          "${rel_path}"
-        cleanup_compare_worker
-        return 1
-      fi
-      if ! _git_snapshot_compare_collect_targeted_index_signatures "${current_materialized_repo}" "${snapshot_files_file}" "${current_sig_file}"; then
-        _git_snapshot_compare_write_worker_error_meta \
-          "${meta_out}" \
-          "compare_current_signature_collect_failed" \
-          "current_signature_collect" \
-          "Failed to collect current signatures for compare." \
-          "${rel_path}"
-        cleanup_compare_worker
-        return 1
-      fi
-      if ! _git_snapshot_compare_collect_targeted_head_signatures "${repo_abs}" "${snapshot_files_file}" "${head_sig_file}"; then
-        _git_snapshot_compare_write_worker_error_meta \
-          "${meta_out}" \
-          "compare_head_signature_collect_failed" \
-          "head_signature_collect" \
-          "Failed to collect HEAD signatures for compare." \
-          "${rel_path}"
-        cleanup_compare_worker
-        return 1
-      fi
-    elif ! _git_snapshot_compare_collect_index_signatures "${snapshot_materialized_repo}" "${snapshot_sig_file}"; then
-      _git_snapshot_compare_write_worker_error_meta \
-        "${meta_out}" \
-        "compare_snapshot_signature_collect_failed" \
-        "snapshot_signature_collect" \
-        "Failed to collect snapshot signatures for compare." \
-        "${rel_path}"
-      cleanup_compare_worker
-      return 1
-    fi
-    if [[ "${snapshot_file_count}" -gt "${targeted_signature_limit}" ]] && ! _git_snapshot_compare_collect_index_signatures "${current_materialized_repo}" "${current_sig_file}"; then
-      _git_snapshot_compare_write_worker_error_meta \
-        "${meta_out}" \
-        "compare_current_signature_collect_failed" \
-        "current_signature_collect" \
-        "Failed to collect current signatures for compare." \
-        "${rel_path}"
-      cleanup_compare_worker
-      return 1
-    fi
-    if [[ "${snapshot_file_count}" -gt "${targeted_signature_limit}" ]] && ! _git_snapshot_compare_collect_head_signatures "${repo_abs}" "${head_sig_file}"; then
-      _git_snapshot_compare_write_worker_error_meta \
-        "${meta_out}" \
-        "compare_head_signature_collect_failed" \
-        "head_signature_collect" \
-        "Failed to collect HEAD signatures for compare." \
-        "${rel_path}"
-      cleanup_compare_worker
-      return 1
-    fi
-
     if ! _git_snapshot_compare_classify_batch \
       "${snapshot_files_file}" \
       "${snapshot_sig_file}" \
@@ -2861,7 +3033,7 @@ _git_snapshot_compare_process_repo_worker() {
         "batch_classification" \
         "Failed to classify compare rows." \
         "${rel_path}"
-      cleanup_compare_worker
+      cleanup_compare_worker_v3
       return 1
     fi
   fi
@@ -2876,7 +3048,6 @@ _git_snapshot_compare_process_repo_worker() {
   if [[ "${cache_enabled}" == "true" ]]; then
     cache_family_dir="${cache_root}/${snapshot_id}/${repo_id}"
     cache_entry_dir="${cache_family_dir}/${cache_key_hash}"
-
     mkdir -p "${cache_family_dir}" 2>/dev/null || true
     cache_tmp_dir="${cache_entry_dir}.tmp.$$"
     rm -rf "${cache_tmp_dir}"
@@ -2894,13 +3065,65 @@ _git_snapshot_compare_process_repo_worker() {
   _git_snapshot_compare_write_worker_success_meta \
     "${meta_out}" \
     "0" \
+    "v3" \
     "${files_total}" \
     "${resolved_committed}" \
     "${resolved_uncommitted}" \
     "${unresolved_missing}" \
     "${unresolved_diverged}"
-  cleanup_compare_worker
+  cleanup_compare_worker_v3
   return 0
+}
+
+_git_snapshot_compare_process_repo_worker() {
+  local root_repo="$1"
+  local snapshot_path="$2"
+  local snapshot_id="$3"
+  local cache_root="$4"
+  local cache_enabled="$5"
+  local cache_max_entries="$6"
+  local idx="$7"
+  local repo_id="$8"
+  local rel_path="$9"
+  local _snapshot_head="${10}"
+  local _snapshot_status_hash="${11}"
+  local results_dir="${12}"
+
+  local rows_out="${results_dir}/${idx}.rows.tsv"
+  local counts_out="${results_dir}/${idx}.counts.env"
+  local meta_out="${results_dir}/${idx}.meta.env"
+  local repo_bundle_dir=""
+  local repo_abs=""
+
+  : > "${rows_out}"
+
+  repo_bundle_dir="$(_git_snapshot_store_repo_dir_for_id "${snapshot_path}" "${repo_id}")"
+  repo_abs="${root_repo}/${rel_path}"
+
+  if ! _git_snapshot_compare_has_target_metadata "${repo_bundle_dir}"; then
+    _git_snapshot_compare_write_worker_error_meta \
+      "${meta_out}" \
+      "compare_target_metadata_missing" \
+      "target_metadata_validate" \
+      "Snapshot compare target metadata is missing." \
+      "${rel_path}"
+    return 1
+  fi
+
+  _git_snapshot_compare_process_repo_worker_v3 \
+    "${root_repo}" \
+    "${snapshot_path}" \
+    "${snapshot_id}" \
+    "${cache_root}" \
+    "${cache_enabled}" \
+    "${cache_max_entries}" \
+    "${repo_id}" \
+    "${rel_path}" \
+    "${rows_out}" \
+    "${counts_out}" \
+    "${meta_out}" \
+    "${repo_bundle_dir}" \
+    "${repo_abs}"
 }
 
 _git_snapshot_compare_engine() {
@@ -2957,6 +3180,7 @@ _git_snapshot_compare_engine() {
   local unresolved_diverged=0
   local cache_hit_repos=0
   local cache_miss_repos=0
+  local summary_engine="v3"
 
   if [[ "${porcelain}" == "true" ]]; then
     local safe_snapshot_root safe_current_root safe_selection_mode safe_snapshot_origin
@@ -3087,6 +3311,19 @@ _git_snapshot_compare_engine() {
     else
       cache_miss_repos=$((cache_miss_repos + 1))
     fi
+    if [[ "${GSN_COMPARE_WORKER_ENGINE}" != "v3" ]]; then
+      GSN_COMPARE_ERROR_ID="compare_worker_engine_invalid"
+      GSN_COMPARE_ERROR_STAGE="worker_meta"
+      GSN_COMPARE_ERROR_MESSAGE="Compare worker emitted unsupported engine metadata."
+      GSN_COMPARE_ERROR_REPO="${merge_rel_path}"
+      _git_snapshot_ui_err "Compare worker emitted unsupported engine metadata."
+      if [[ "${porcelain}" == "true" ]]; then
+        _git_snapshot_compare_emit_porcelain_error "${snapshot_id}" "${merge_rel_path}"
+      fi
+      rm -rf "${diff_store_dir}" "${results_dir}"
+      rm -f "${rows_file}" "${tasks_file}"
+      return 1
+    fi
 
     local diff_snapshot_materialized_repo=""
     local diff_current_materialized_repo=""
@@ -3184,8 +3421,8 @@ _git_snapshot_compare_engine() {
         "${snapshot_id}" "${safe_repo}" "${safe_file}" "${row_status}" "${safe_reason}"
     done < "${rows_file}"
 
-    printf "compare_summary\tsnapshot_id=%s\trepos_checked=%s\tfiles_total=%s\tresolved_committed=%s\tresolved_uncommitted=%s\tunresolved_missing=%s\tunresolved_diverged=%s\tunresolved_total=%s\tshown_files=%s\tengine=v2\telapsed_ms=%s\tcache_hit_repos=%s\tcache_miss_repos=%s\tcontract_version=5\n" \
-      "${snapshot_id}" "${repos_checked}" "${files_total}" "${resolved_committed}" "${resolved_uncommitted}" "${unresolved_missing}" "${unresolved_diverged}" "${unresolved_total}" "${shown_files}" "${elapsed_ms}" "${cache_hit_repos}" "${cache_miss_repos}"
+    printf "compare_summary\tsnapshot_id=%s\trepos_checked=%s\tfiles_total=%s\tresolved_committed=%s\tresolved_uncommitted=%s\tunresolved_missing=%s\tunresolved_diverged=%s\tunresolved_total=%s\tshown_files=%s\tengine=%s\telapsed_ms=%s\tcache_hit_repos=%s\tcache_miss_repos=%s\tcontract_version=5\n" \
+      "${snapshot_id}" "${repos_checked}" "${files_total}" "${resolved_committed}" "${resolved_uncommitted}" "${unresolved_missing}" "${unresolved_diverged}" "${unresolved_total}" "${shown_files}" "${summary_engine}" "${elapsed_ms}" "${cache_hit_repos}" "${cache_miss_repos}"
 
     rm -rf "${diff_store_dir}" "${results_dir}"
     rm -f "${rows_file}" "${tasks_file}"
@@ -3459,6 +3696,9 @@ _git_snapshot_cmd_restore() {
 
   _git_snapshot_validate_snapshot_id "${snapshot_id}"
   _git_snapshot_store_assert_snapshot_exists "${root_repo}" "${snapshot_id}"
+  local snapshot_path
+  snapshot_path="$(_git_snapshot_store_snapshot_path "${root_repo}" "${snapshot_id}")"
+  _git_snapshot_store_load_snapshot_meta "${snapshot_path}" || return 1
 
   if [[ "${porcelain}" != "true" ]]; then
     _git_snapshot_ui_warn "Restore will overwrite tracked changes and delete untracked files (ignored files stay untouched)."

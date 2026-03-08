@@ -22,7 +22,7 @@ snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${create_ou
 assert_eq "cache-hit-main" "${snapshot_id}" "cache-hit snapshot id should be preserved"
 
 first_compare="$(cd "${repo}" && git_snapshot_test_cmd compare "${snapshot_id}" --repo . --all --porcelain)"
-assert_contains $'compare_summary\tsnapshot_id='"${snapshot_id}"$'\trepos_checked=1\tfiles_total=1\tresolved_committed=0\tresolved_uncommitted=1\tunresolved_missing=0\tunresolved_diverged=0\tunresolved_total=0\tshown_files=1\tengine=v2\telapsed_ms=' "${first_compare}" "first compare should emit v5 summary"
+assert_contains $'compare_summary\tsnapshot_id='"${snapshot_id}"$'\trepos_checked=1\tfiles_total=1\tresolved_committed=0\tresolved_uncommitted=1\tunresolved_missing=0\tunresolved_diverged=0\tunresolved_total=0\tshown_files=1\tengine=v3\telapsed_ms=' "${first_compare}" "first compare should emit v5 summary"
 assert_contains $'\tcache_hit_repos=0\tcache_miss_repos=1\tcontract_version=5' "${first_compare}" "first compare should populate cache miss telemetry"
 
 second_compare="$(cd "${repo}" && git_snapshot_test_cmd compare "${snapshot_id}" --repo . --all --porcelain)"
@@ -85,7 +85,27 @@ same_untracked_second="$(cd "${same_untracked_repo}" && git_snapshot_test_cmd co
 assert_contains $'\tcache_hit_repos=0\tcache_miss_repos=1\tcontract_version=5' "${same_untracked_second}" "content-only untracked edits should invalidate cache"
 assert_contains $'compare_file\tsnapshot_id='"${same_untracked_snapshot_id}"$'\trepo=.\tfile=note.txt\tstatus=unresolved_diverged\treason=current content or mode diverges from snapshot target' "${same_untracked_second}" "content-only untracked edits should recalculate compare rows"
 
-# 1d) Special-path files must preserve stable escaped compare rows across cache hits and misses.
+# 1d) Unrelated changes outside snapshot-targeted paths should keep the v3 cache warm.
+targeted_cache_repo="${TEST_REPOS_ROOT}/cache-hit-targeted"
+git_snapshot_test_init_repo "${targeted_cache_repo}"
+git_snapshot_test_commit_file "${targeted_cache_repo}" "tracked.txt" "base" "init targeted cache tracked"
+git_snapshot_test_commit_file "${targeted_cache_repo}" "unrelated.txt" "base" "init unrelated tracked"
+printf "snapshot-target\n" > "${targeted_cache_repo}/tracked.txt"
+
+targeted_create_output="$(cd "${targeted_cache_repo}" && git_snapshot_test_cmd create cache-hit-targeted)"
+targeted_snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${targeted_create_output}")"
+assert_eq "cache-hit-targeted" "${targeted_snapshot_id}" "targeted cache snapshot id should be preserved"
+
+targeted_first="$(cd "${targeted_cache_repo}" && git_snapshot_test_cmd compare "${targeted_snapshot_id}" --repo . --all --porcelain)"
+assert_contains $'\tcache_hit_repos=0\tcache_miss_repos=1\tcontract_version=5' "${targeted_first}" "first targeted compare should miss cache"
+assert_contains $'compare_file\tsnapshot_id='"${targeted_snapshot_id}"$'\trepo=.\tfile=tracked.txt\tstatus=resolved_uncommitted' "${targeted_first}" "targeted compare should classify the captured path"
+
+printf "unrelated-change\n" > "${targeted_cache_repo}/unrelated.txt"
+targeted_second="$(cd "${targeted_cache_repo}" && git_snapshot_test_cmd compare "${targeted_snapshot_id}" --repo . --all --porcelain)"
+assert_contains $'\tcache_hit_repos=1\tcache_miss_repos=0\tcontract_version=5' "${targeted_second}" "unrelated path edits should not invalidate the v3 compare cache"
+assert_eq "$(printf "%s\n" "${targeted_first}" | grep '^compare_file' || true)" "$(printf "%s\n" "${targeted_second}" | grep '^compare_file' || true)" "unrelated path edits should keep identical compare rows"
+
+# 1e) Special-path files must preserve stable escaped compare rows across cache hits and misses.
 special_path_repo="${TEST_REPOS_ROOT}/cache-hit-special-paths"
 git_snapshot_test_init_repo "${special_path_repo}"
 git_snapshot_test_commit_file "${special_path_repo}" "tracked.txt" "base" "init special-path cache repo"

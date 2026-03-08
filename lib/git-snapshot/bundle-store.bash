@@ -27,13 +27,6 @@ _git_snapshot_store_base64_decode() {
   return 1
 }
 
-_git_snapshot_store_decode_legacy_meta_value() {
-  local value="$1"
-
-  # Legacy metadata used shell-style escaping (%q). Decode without eval/source.
-  printf "%b" "${value}"
-}
-
 _git_snapshot_store_root_for_repo() {
   local root_repo="$1"
   local repo_name
@@ -125,7 +118,7 @@ _git_snapshot_store_write_snapshot_meta() {
   fi
 
   {
-    printf "FORMAT=git_snapshot_meta_v3\n"
+    printf "FORMAT=git_snapshot_meta_v4\n"
     printf "SNAPSHOT_ID_B64=%s\n" "$(_git_snapshot_store_base64_encode "${snapshot_id}")"
     printf "CREATED_AT_EPOCH=%s\n" "${created_at_epoch}"
     printf "ROOT_REPO_B64=%s\n" "$(_git_snapshot_store_base64_encode "${root_repo}")"
@@ -153,13 +146,12 @@ _git_snapshot_store_rename_snapshot() {
     return 1
   fi
 
-  mv "${old_snapshot_path}" "${new_snapshot_path}"
-
-  if ! _git_snapshot_store_load_snapshot_meta "${new_snapshot_path}"; then
-    _git_snapshot_ui_err "Failed to read metadata after rename; rolling back snapshot path."
-    mv "${new_snapshot_path}" "${old_snapshot_path}" 2>/dev/null || true
+  if ! _git_snapshot_store_load_snapshot_meta "${old_snapshot_path}"; then
+    _git_snapshot_ui_err "Failed to read snapshot metadata before rename."
     return 1
   fi
+
+  mv "${old_snapshot_path}" "${new_snapshot_path}"
 
   if ! _git_snapshot_store_write_snapshot_meta "${new_snapshot_path}" "${new_snapshot_id}" "${ROOT_REPO}" "${REPO_COUNT}" "${CREATED_AT_EPOCH}" "${SNAPSHOT_ORIGIN}"; then
     _git_snapshot_ui_err "Failed to update snapshot metadata after rename; rolling back snapshot path."
@@ -185,11 +177,6 @@ _git_snapshot_store_load_snapshot_meta() {
   local root_repo=""
   local repo_count=""
   local snapshot_origin=""
-  local legacy_snapshot_id=""
-  local legacy_created_at_epoch=""
-  local legacy_root_repo=""
-  local legacy_repo_count=""
-  local legacy_snapshot_origin=""
   local line key value
 
   while IFS= read -r line || [[ -n "${line}" ]]; do
@@ -212,54 +199,41 @@ _git_snapshot_store_load_snapshot_meta() {
         ;;
       CREATED_AT_EPOCH)
         created_at_epoch="${value}"
-        legacy_created_at_epoch="${value}"
         ;;
       ROOT_REPO_B64)
         root_repo="$(_git_snapshot_store_base64_decode "${value}")" || return 1
         ;;
       REPO_COUNT)
         repo_count="${value}"
-        legacy_repo_count="${value}"
         ;;
       SNAPSHOT_ORIGIN)
         snapshot_origin="${value}"
-        legacy_snapshot_origin="${value}"
-        ;;
-      SNAPSHOT_ID)
-        legacy_snapshot_id="$(_git_snapshot_store_decode_legacy_meta_value "${value}")"
-        ;;
-      ROOT_REPO)
-        legacy_root_repo="$(_git_snapshot_store_decode_legacy_meta_value "${value}")"
         ;;
       *)
-        _git_snapshot_ui_err "Unexpected snapshot metadata key: ${key}"
+        _git_snapshot_ui_err "Snapshot metadata is corrupt or unsupported: unexpected key ${key} in ${meta_file}"
         return 1
         ;;
     esac
   done < "${meta_file}"
 
-  if [[ "${format}" == "git_snapshot_meta_v2" || "${format}" == "git_snapshot_meta_v3" ]]; then
-    SNAPSHOT_ID="${snapshot_id}"
-    CREATED_AT_EPOCH="${created_at_epoch}"
-    ROOT_REPO="${root_repo}"
-    REPO_COUNT="${repo_count}"
-    SNAPSHOT_ORIGIN="${snapshot_origin}"
-  else
-    # Legacy snapshot format fallback (pre-v2). Decode safely without source/eval.
-    SNAPSHOT_ID="${legacy_snapshot_id}"
-    CREATED_AT_EPOCH="${legacy_created_at_epoch}"
-    ROOT_REPO="${legacy_root_repo}"
-    REPO_COUNT="${legacy_repo_count}"
-    SNAPSHOT_ORIGIN="${legacy_snapshot_origin}"
+  if [[ -z "${format}" ]]; then
+    _git_snapshot_ui_err "Snapshot metadata format is missing in ${meta_file} (expected git_snapshot_meta_v4)"
+    return 1
   fi
 
-  if [[ -z "${SNAPSHOT_ORIGIN}" ]]; then
-    # Legacy snapshots did not persist origin; default to user-created.
-    SNAPSHOT_ORIGIN="user"
+  if [[ "${format}" != "git_snapshot_meta_v4" ]]; then
+    _git_snapshot_ui_err "Unsupported snapshot metadata format in ${meta_file}: ${format} (expected git_snapshot_meta_v4)"
+    return 1
   fi
+
+  SNAPSHOT_ID="${snapshot_id}"
+  CREATED_AT_EPOCH="${created_at_epoch}"
+  ROOT_REPO="${root_repo}"
+  REPO_COUNT="${repo_count}"
+  SNAPSHOT_ORIGIN="${snapshot_origin}"
 
   if [[ -z "${SNAPSHOT_ID}" || -z "${ROOT_REPO}" || -z "${CREATED_AT_EPOCH}" || -z "${REPO_COUNT}" ]]; then
-    _git_snapshot_ui_err "Snapshot metadata is incomplete: ${meta_file}"
+    _git_snapshot_ui_err "Snapshot metadata is incomplete or corrupt: ${meta_file}"
     return 1
   fi
 

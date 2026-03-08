@@ -46,7 +46,7 @@ assert_contains "delete-me.txt [unresolved_diverged]" "${delete_diverged_output}
 
 delete_diverged_porcelain="$(cd "${repo_delete_case}" && git_snapshot_test_cmd compare "${delete_snapshot_id}" --repo . --porcelain)"
 assert_contains $'compare_file\tsnapshot_id='"${delete_snapshot_id}"$'\trepo=.\tfile=delete-me.txt\tstatus=unresolved_diverged\treason=path still exists while snapshot target removes it' "${delete_diverged_porcelain}" "porcelain should expose unresolved_diverged status and reason"
-assert_contains $'compare_summary\tsnapshot_id='"${delete_snapshot_id}"$'\trepos_checked=1\tfiles_total=1\tresolved_committed=0\tresolved_uncommitted=0\tunresolved_missing=0\tunresolved_diverged=1\tunresolved_total=1\tshown_files=1\tengine=v2\telapsed_ms=' "${delete_diverged_porcelain}" "porcelain summary should expose v5 unresolved counters and telemetry"
+assert_contains $'compare_summary\tsnapshot_id='"${delete_snapshot_id}"$'\trepos_checked=1\tfiles_total=1\tresolved_committed=0\tresolved_uncommitted=0\tunresolved_missing=0\tunresolved_diverged=1\tunresolved_total=1\tshown_files=1\tengine=v3\telapsed_ms=' "${delete_diverged_porcelain}" "porcelain summary should expose v5 unresolved counters and telemetry"
 assert_contains $'\tcontract_version=5' "${delete_diverged_porcelain}" "porcelain summary should expose v5 contract version"
 
 # 3) Missing repo path should map snapshot files to unresolved_missing rows.
@@ -91,3 +91,26 @@ assert_contains "old.txt [unresolved_diverged]" "${rename_compare_output}" "rein
 
 rename_porcelain_output="$(cd "${repo_rename_case}" && git_snapshot_test_cmd compare "${rename_snapshot_id}" --repo . --porcelain)"
 assert_contains $'compare_file\tsnapshot_id='"${rename_snapshot_id}"$'\trepo=.\tfile=old.txt\tstatus=unresolved_diverged\treason=path still exists while snapshot target removes it' "${rename_porcelain_output}" "porcelain should expose unresolved_diverged for reintroduced rename source"
+
+# 6) Deletion-target gitlink paths should stay resolved when the repo directory remains on disk.
+gitlink_source_repo="${TEST_REPOS_ROOT}/gitlink-delete-source"
+git_snapshot_test_init_repo "${gitlink_source_repo}"
+git_snapshot_test_commit_file "${gitlink_source_repo}" "sub.txt" "submodule-base" "seed gitlink source"
+
+gitlink_delete_repo="${TEST_REPOS_ROOT}/gitlink-delete-case"
+git_snapshot_test_init_repo "${gitlink_delete_repo}"
+git_snapshot_test_commit_file "${gitlink_delete_repo}" "tracked.txt" "base" "seed gitlink delete repo"
+git -C "${gitlink_delete_repo}" -c protocol.file.allow=always submodule add "${gitlink_source_repo}" "modules/sub" >/dev/null
+git -C "${gitlink_delete_repo}" commit -am "add gitlink" >/dev/null
+git -C "${gitlink_delete_repo}" -c protocol.file.allow=always submodule update --init >/dev/null
+
+git -C "${gitlink_delete_repo}" rm -f --cached modules/sub >/dev/null
+gitlink_delete_create_output="$(cd "${gitlink_delete_repo}" && git_snapshot_test_cmd create matrix-delete-gitlink)"
+gitlink_delete_snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${gitlink_delete_create_output}")"
+assert_eq "matrix-delete-gitlink" "${gitlink_delete_snapshot_id}" "gitlink deletion snapshot id should be preserved"
+
+gitlink_delete_compare_output="$(cd "${gitlink_delete_repo}" && git_snapshot_test_cmd compare "${gitlink_delete_snapshot_id}" --repo . --all)"
+assert_contains "modules/sub [resolved_uncommitted]" "${gitlink_delete_compare_output}" "gitlink deletion target should classify as resolved_uncommitted even if the repo directory still exists"
+
+gitlink_delete_porcelain_output="$(cd "${gitlink_delete_repo}" && git_snapshot_test_cmd compare "${gitlink_delete_snapshot_id}" --repo . --all --porcelain)"
+assert_contains $'compare_file\tsnapshot_id='"${gitlink_delete_snapshot_id}"$'\trepo=.\tfile=modules/sub\tstatus=resolved_uncommitted\treason=snapshot target removes this path and working tree matches' "${gitlink_delete_porcelain_output}" "porcelain should preserve resolved_uncommitted semantics for gitlink deletion targets"

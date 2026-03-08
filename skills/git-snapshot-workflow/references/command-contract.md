@@ -13,6 +13,8 @@
   - `--yes` bypasses clear confirmation (only valid with `--clear`).
   - `--clear` is best-effort: reports failures per repo and exits non-zero if any clear failed.
   - Submodule checkout/update alignment is not performed during clear.
+  - Snapshots use `git_snapshot_meta_v4` and persist per-repo compare
+    target manifests/signatures for metadata-backed compare.
 
 - `git-snapshot reset-all [--snapshot|--no-snapshot] [--porcelain]`
   - Clears root-most superproject + initialized recursive submodules in place:
@@ -102,8 +104,13 @@
     - `compare_summary`: totals (`repos_checked`, `files_total`,
       `resolved_committed`, `resolved_uncommitted`, `unresolved_missing`,
       `unresolved_diverged`, `unresolved_total`, `shown_files`) + telemetry
-      (`engine=v2`, `elapsed_ms` wall-clock milliseconds, `cache_hit_repos`,
+      (`engine=v3`, `elapsed_ms` wall-clock milliseconds, `cache_hit_repos`,
       `cache_miss_repos`) + `contract_version=5`
+  - Cache behavior:
+    - snapshots use metadata-backed `engine=v3`
+    - compare requires intact `git_snapshot_meta_v4` metadata and compare-target
+      metadata; corrupt or unsupported snapshots fail instead of rebuilding
+      compare inputs
   - Exit codes:
     - `0`: compare completed
     - `1`: usage/runtime error

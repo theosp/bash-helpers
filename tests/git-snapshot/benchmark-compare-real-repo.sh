@@ -14,7 +14,7 @@ Usage:
 Environment:
   GIT_SNAPSHOT_BENCHMARK_ROOT_REPO=<path>     Optional root repo override.
   GIT_SNAPSHOT_BENCHMARK_SNAPSHOT_ID=<id>     Optional snapshot id override.
-  GIT_SNAPSHOT_BENCHMARK_JOBS="1 2 4 8"       Space-separated worker counts.
+  GIT_SNAPSHOT_BENCHMARK_JOBS="auto 1 2 4 8"  Space-separated worker counts.
   GIT_SNAPSHOT_BENCHMARK_INCLUDE_WARM=<0|1>   Whether to rerun each case warm.
 
 Output:
@@ -32,7 +32,7 @@ if [[ -z "${root_repo}" || -z "${snapshot_id}" ]]; then
 fi
 
 root_repo="$(cd "${root_repo}" && pwd -P)"
-jobs_raw="${GIT_SNAPSHOT_BENCHMARK_JOBS:-1 2 4 8 12 16}"
+jobs_raw="${GIT_SNAPSHOT_BENCHMARK_JOBS:-auto 1 2 4 8 12 16}"
 include_warm="${GIT_SNAPSHOT_BENCHMARK_INCLUDE_WARM:-1}"
 
 snapshot_store_root="${HOME}/git-snapshots/$(basename "${root_repo}")"
@@ -82,10 +82,16 @@ run_compare_once() {
   local compare_output=""
   local summary_line=""
 
-  compare_output="$(cd "${root_repo}" && \
-    GIT_SNAPSHOT_COMPARE_CACHE=1 \
-    GIT_SNAPSHOT_COMPARE_JOBS="${jobs}" \
-    "${GIT_SNAPSHOT_BIN}" compare "${snapshot_id}" --porcelain)"
+  if [[ "${jobs}" == "auto" || "${jobs}" == "default" ]]; then
+    compare_output="$(cd "${root_repo}" && \
+      GIT_SNAPSHOT_COMPARE_CACHE=1 \
+      "${GIT_SNAPSHOT_BIN}" compare "${snapshot_id}" --porcelain)"
+  else
+    compare_output="$(cd "${root_repo}" && \
+      GIT_SNAPSHOT_COMPARE_CACHE=1 \
+      GIT_SNAPSHOT_COMPARE_JOBS="${jobs}" \
+      "${GIT_SNAPSHOT_BIN}" compare "${snapshot_id}" --porcelain)"
+  fi
   summary_line="$(printf "%s\n" "${compare_output}" | grep '^compare_summary' || true)"
   emit_benchmark_result "${jobs}" "${temperature}" "${summary_line}"
 }

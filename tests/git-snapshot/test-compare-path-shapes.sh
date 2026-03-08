@@ -26,7 +26,7 @@ assert_contains "Compare: no unresolved snapshot work." "${dash_compare_output}"
 assert_contains "No rows to display for current visibility filter." "${dash_compare_output}" "clean snapshot scope should keep default unresolved view empty"
 
 dash_porcelain_output="$(cd "${repo}" && git_snapshot_test_cmd compare "${base_snapshot_id}" --repo . --porcelain)"
-assert_contains $'compare_summary\tsnapshot_id='"${base_snapshot_id}"$'\trepos_checked=1\tfiles_total=0\tresolved_committed=0\tresolved_uncommitted=0\tunresolved_missing=0\tunresolved_diverged=0\tunresolved_total=0\tshown_files=0\tengine=v2\telapsed_ms=' "${dash_porcelain_output}" "dash path regression should still emit normal compare summary"
+assert_contains $'compare_summary\tsnapshot_id='"${base_snapshot_id}"$'\trepos_checked=1\tfiles_total=0\tresolved_committed=0\tresolved_uncommitted=0\tunresolved_missing=0\tunresolved_diverged=0\tunresolved_total=0\tshown_files=0\tengine=v3\telapsed_ms=' "${dash_porcelain_output}" "dash path regression should still emit normal compare summary"
 assert_contains $'\tcontract_version=5' "${dash_porcelain_output}" "dash path regression should expose v5 compare contract"
 assert_not_contains "compare_error" "${dash_porcelain_output}" "dash path regression should not emit compare_error rows"
 rm -f "${repo}/--dash-untracked.txt"
@@ -146,15 +146,72 @@ error_create_output="$(cd "${error_repo}" && git_snapshot_test_cmd create compar
 error_snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${error_create_output}")"
 assert_eq "compare-error-row" "${error_snapshot_id}" "error snapshot id should be preserved"
 
+assert_compare_integrity_failure() {
+  local snapshot_id="$1"
+  local output="$2"
+  local code="$3"
+  local description="$4"
+
+  assert_exit_code 1 "${code}" "${description}"
+  assert_contains $'compare_target\tselected_snapshot_id='"${snapshot_id}"$'\tselection_mode=explicit\tsnapshot_origin=user\tsnapshot_root=' "${output}" "${description}"
+  assert_contains $'compare_error\tsnapshot_id='"${snapshot_id}"$'\trepo=.\terror_id=compare_target_metadata_hash_mismatch\tstage=target_metadata_integrity\tmessage=Snapshot compare target metadata failed integrity verification.\tcontract_version=1' "${output}" "${description}"
+  assert_not_contains $'compare_summary\tsnapshot_id='"${snapshot_id}" "${output}" "${description}"
+}
+
 snapshot_root="$(git_snapshot_test_snapshot_root_for_repo "${error_repo}")"
+repo_bundle_dir="${snapshot_root}/${error_snapshot_id}/repos/repo-0001"
 printf "this-is-not-a-valid-patch\n" > "${snapshot_root}/${error_snapshot_id}/repos/repo-0001/staged.patch"
+
+error_v3_output="$(cd "${error_repo}" && git_snapshot_test_cmd compare "${error_snapshot_id}" --repo . --all --porcelain)"
+assert_contains $'\tengine=v3\t' "${error_v3_output}" "metadata-backed compare should keep using the v3 engine even when snapshot patches are corrupted"
+assert_not_contains $'compare_error\tsnapshot_id='"${error_snapshot_id}" "${error_v3_output}" "metadata-backed compare should not emit compare_error rows for unused patch corruption"
+
+# Compare-target signature tampering must fail even on cold cache runs.
+signature_cold_create_output="$(cd "${error_repo}" && git_snapshot_test_cmd create compare-signature-tamper-cold)"
+signature_cold_snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${signature_cold_create_output}")"
+signature_cold_repo_bundle_dir="${snapshot_root}/${signature_cold_snapshot_id}/repos/repo-0001"
+: > "${signature_cold_repo_bundle_dir}/compare-target.signatures.tsv"
+
+set +e
+signature_cold_output="$(cd "${error_repo}" && GIT_SNAPSHOT_COMPARE_CACHE=0 git_snapshot_test_cmd compare "${signature_cold_snapshot_id}" --repo . --all --porcelain 2>&1)"
+signature_cold_code=$?
+set -e
+assert_compare_integrity_failure "${signature_cold_snapshot_id}" "${signature_cold_output}" "${signature_cold_code}" "compare should fail on cold-cache signature metadata tampering"
+
+# Integrity verification must run before warmed cache reuse.
+signature_warm_create_output="$(cd "${error_repo}" && git_snapshot_test_cmd create compare-signature-tamper-warm)"
+signature_warm_snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${signature_warm_create_output}")"
+signature_warm_repo_bundle_dir="${snapshot_root}/${signature_warm_snapshot_id}/repos/repo-0001"
+signature_warm_seed_output="$(cd "${error_repo}" && git_snapshot_test_cmd compare "${signature_warm_snapshot_id}" --repo . --all --porcelain)"
+assert_contains $'compare_summary\tsnapshot_id='"${signature_warm_snapshot_id}"$'\t' "${signature_warm_seed_output}" "warm signature tamper setup should populate compare cache"
+: > "${signature_warm_repo_bundle_dir}/compare-target.signatures.tsv"
+
+set +e
+signature_warm_output="$(cd "${error_repo}" && git_snapshot_test_cmd compare "${signature_warm_snapshot_id}" --repo . --all --porcelain 2>&1)"
+signature_warm_code=$?
+set -e
+assert_compare_integrity_failure "${signature_warm_snapshot_id}" "${signature_warm_output}" "${signature_warm_code}" "compare should fail on warmed-cache signature metadata tampering before cache reuse"
+
+# Compare-target path tampering must fail while metadata files are still present.
+paths_tamper_create_output="$(cd "${error_repo}" && git_snapshot_test_cmd create compare-paths-tamper)"
+paths_tamper_snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${paths_tamper_create_output}")"
+paths_tamper_repo_bundle_dir="${snapshot_root}/${paths_tamper_snapshot_id}/repos/repo-0001"
+printf "%s\n" "$(printf "unexpected-path.txt" | base64 | tr -d '\n')" >> "${paths_tamper_repo_bundle_dir}/compare-target.paths.b64"
+
+set +e
+paths_tamper_output="$(cd "${error_repo}" && GIT_SNAPSHOT_COMPARE_CACHE=0 git_snapshot_test_cmd compare "${paths_tamper_snapshot_id}" --repo . --all --porcelain 2>&1)"
+paths_tamper_code=$?
+set -e
+assert_compare_integrity_failure "${paths_tamper_snapshot_id}" "${paths_tamper_output}" "${paths_tamper_code}" "compare should fail on compare-target path tampering"
+
+rm -f "${repo_bundle_dir}/compare-target.paths.b64" "${repo_bundle_dir}/compare-target.signatures.tsv" "${repo_bundle_dir}/compare-target.meta.env"
 
 set +e
 error_porcelain_output="$(cd "${error_repo}" && git_snapshot_test_cmd compare "${error_snapshot_id}" --repo . --porcelain 2>&1)"
 error_porcelain_code=$?
 set -e
 
-assert_exit_code 1 "${error_porcelain_code}" "compare should fail when snapshot staged bundle is corrupted"
+assert_exit_code 1 "${error_porcelain_code}" "compare should fail when compare-target metadata is missing"
 assert_contains $'compare_target\tselected_snapshot_id='"${error_snapshot_id}"$'\tselection_mode=explicit\tsnapshot_origin=user\tsnapshot_root=' "${error_porcelain_output}" "porcelain compare should emit compare_target before failure"
-assert_contains $'compare_error\tsnapshot_id='"${error_snapshot_id}"$'\trepo=.\terror_id=compare_snapshot_staged_apply_failed\tstage=snapshot_staged_apply\tmessage=Failed to materialize staged snapshot bundle for compare.\tcontract_version=1' "${error_porcelain_output}" "porcelain compare should emit structured compare_error row with stable error identifier"
+assert_contains $'compare_error\tsnapshot_id='"${error_snapshot_id}"$'\trepo=.\terror_id=compare_target_metadata_missing\tstage=target_metadata_validate\tmessage=Snapshot compare target metadata is missing.\tcontract_version=1' "${error_porcelain_output}" "porcelain compare should emit structured compare_error row when compare-target metadata is missing"
 assert_not_contains $'compare_summary\tsnapshot_id='"${error_snapshot_id}" "${error_porcelain_output}" "failed compare should not emit compare summary"

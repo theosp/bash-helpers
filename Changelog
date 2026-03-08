@@ -16,6 +16,12 @@ FUTURE
 * Speed up cold compare misses by limiting signature collection to
   snapshot-tracked paths and skipping truly empty snapshot bundles.
 
+* Add metadata-backed `git-snapshot compare` fast-path snapshots:
+  - new snapshots now persist per-repo compare target manifests and target signatures
+  - compare requires `git_snapshot_meta_v4` metadata and uses `engine=v3`
+  - cache reuse now stays valid when unrelated paths outside the snapshot target change
+  - add targeted-signature, metadata-integrity, and strict v4-only coverage for the fast path.
+
 v1.0.37 (2026-03-06)
 
 * Harden parallel `git-snapshot compare` worker queue setup:

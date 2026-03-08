@@ -131,6 +131,9 @@ Creates a snapshot.
   - command exits non-zero if any clear failed
 - Snapshot id is still printed as final output line even on clear failure (for recovery).
 - `--clear` does **not** run submodule checkout/update alignment; submodule HEAD drift is warning-only.
+- Snapshots write `git_snapshot_meta_v4` metadata and persist per-repo
+  compare target manifests/signatures so `compare` can use the metadata-backed
+  fast path without rebuilding full temp repos.
 - Last output line is always the snapshot id.
 
 ### `git-snapshot reset-all [--snapshot|--no-snapshot] [--porcelain]`
@@ -278,11 +281,14 @@ Persistent compare cache:
 - disable with `GIT_SNAPSHOT_COMPARE_CACHE=0`
 - override worker parallelism with `GIT_SNAPSHOT_COMPARE_JOBS=<n>`
 - cap retained cache entries per snapshot/repo family with `GIT_SNAPSHOT_COMPARE_CACHE_MAX_ENTRIES=<n>`
+- compare uses the metadata-backed `engine=v3`
+- compare requires intact `git_snapshot_meta_v4` metadata and compare-target manifests/signatures; corrupt or unsupported snapshots fail instead of rebuilding fallback state
+- For the distinction between snapshot storage format, compare engine label, and porcelain contract version, see [`lib/git-snapshot/TECHNICAL.md`](lib/git-snapshot/TECHNICAL.md).
 
 Porcelain rows:
 - `compare_target`: selected snapshot metadata + visibility mode
 - `compare_file`: one row per shown file with escaped `file`, `status`, and `reason` (`\`, tab, newline, and carriage return are backslash-escaped)
-- `compare_summary`: totals, telemetry (`engine=v2`, `elapsed_ms`, `cache_hit_repos`, `cache_miss_repos`), and `contract_version=5`
+- `compare_summary`: totals, telemetry (`engine=v3`, `elapsed_ms`, `cache_hit_repos`, `cache_miss_repos`), and `contract_version=5`
 
 Exit codes:
 - `0`: compare completed
