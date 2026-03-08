@@ -230,24 +230,57 @@ _git_snapshot_inspect_apply_check_unstaged() {
   fi
 }
 
-_git_snapshot_inspect_untracked_collisions() {
+_git_snapshot_inspect_restore_apply_checks() {
   local repo_abs="$1"
   local repo_bundle_dir="$2"
-  local tar_file="${repo_bundle_dir}/untracked.tar"
-  local file collisions=""
+  local staged_patch="${repo_bundle_dir}/staged.patch"
+  local unstaged_patch="${repo_bundle_dir}/unstaged.patch"
 
-  if [[ ! -f "${tar_file}" ]]; then
+  GSN_INSPECT_APPLY_CHECK_STAGED="$(_git_snapshot_inspect_apply_check_staged "${repo_abs}" "${repo_bundle_dir}")"
+  GSN_INSPECT_APPLY_CHECK_UNSTAGED="$(_git_snapshot_inspect_apply_check_unstaged "${repo_abs}" "${repo_bundle_dir}")"
+
+  if [[ "${GSN_INSPECT_APPLY_CHECK_STAGED}" != "ok" || ! -s "${staged_patch}" || ! -s "${unstaged_patch}" ]]; then
     return 0
   fi
 
-  while IFS= read -r file; do
-    [[ -z "${file}" ]] && continue
-    if [[ -e "${repo_abs}/${file}" ]] || git -C "${repo_abs}" ls-files --error-unmatch "${file}" >/dev/null 2>&1; then
-      collisions+="${file}"$'\n'
-    fi
-  done < <(_git_snapshot_inspect_tar_files "${tar_file}")
+  local temp_repo
+  temp_repo="$(mktemp -d "${TMPDIR:-/tmp}/git-snapshot-restore-check.XXXXXX")"
 
-  printf "%s" "${collisions}" | sed '/^$/d'
+  if ! git clone --quiet --no-local "${repo_abs}" "${temp_repo}" >/dev/null 2>&1; then
+    rm -rf "${temp_repo}"
+    return 0
+  fi
+
+  if ! git -C "${temp_repo}" reset --hard HEAD >/dev/null 2>&1; then
+    rm -rf "${temp_repo}"
+    return 0
+  fi
+
+  if ! git -C "${temp_repo}" clean -fd >/dev/null 2>&1; then
+    rm -rf "${temp_repo}"
+    return 0
+  fi
+
+  if ! git -C "${temp_repo}" apply --binary --whitespace=nowarn --index "${staged_patch}" >/dev/null 2>&1; then
+    GSN_INSPECT_APPLY_CHECK_UNSTAGED="fail"
+    rm -rf "${temp_repo}"
+    return 0
+  fi
+
+  if git -C "${temp_repo}" apply --check --binary --whitespace=nowarn "${unstaged_patch}" >/dev/null 2>&1; then
+    GSN_INSPECT_APPLY_CHECK_UNSTAGED="ok"
+  else
+    GSN_INSPECT_APPLY_CHECK_UNSTAGED="fail"
+  fi
+
+  rm -rf "${temp_repo}"
+}
+
+_git_snapshot_inspect_untracked_collisions() {
+  local repo_abs="$1"
+  local repo_bundle_dir="$2"
+
+  _git_snapshot_restore_list_untracked_collisions "${repo_abs}" "${repo_bundle_dir}"
 }
 
 _git_snapshot_inspect_repo_snapshot_branches_csv() {

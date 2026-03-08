@@ -212,7 +212,7 @@ Other flags:
 
 ### `git-snapshot restore-check <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]`
 
-Checks restore compatibility against the current workspace state.
+Checks default reject-mode restore compatibility against the current workspace state.
 Default behavior is summary-first:
 - show checked/issue/clean totals
 - list issue repos only

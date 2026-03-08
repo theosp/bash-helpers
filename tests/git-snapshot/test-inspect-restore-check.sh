@@ -104,6 +104,33 @@ assert_exit_code 3 "${restore_check_collision_limited_code}" "restore-check with
 assert_contains "Collision files (3):" "${restore_check_collision_limited}" "collision details should include total collision count"
 assert_contains "... +2 more" "${restore_check_collision_limited}" "collision details should be truncated when limit is set"
 
+# Hidden-path untracked collisions should also be treated as blocking issues.
+git -C "${root_repo}" reset --hard >/dev/null
+git -C "${root_repo}" clean -fd >/dev/null
+mkdir -p "${root_repo}/.cursor/skills/migration-package-descriptor"
+printf "snapshot-hidden\n" > "${root_repo}/.cursor/skills/migration-package-descriptor/SKILL.md"
+
+hidden_collision_create_output="$(cd "${root_repo}" && git_snapshot_test_cmd create)"
+hidden_collision_snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${hidden_collision_create_output}")"
+assert_non_empty "${hidden_collision_snapshot_id}" "hidden collision snapshot id should be returned"
+
+git -C "${root_repo}" reset --hard >/dev/null
+git -C "${root_repo}" clean -fd >/dev/null
+mkdir -p "${root_repo}/.cursor/skills/migration-package-descriptor"
+printf "current-hidden-collision\n" > "${root_repo}/.cursor/skills/migration-package-descriptor/SKILL.md"
+
+set +e
+restore_check_hidden_collision_output="$(cd "${root_repo}" && git_snapshot_test_cmd restore-check "${hidden_collision_snapshot_id}" --repo . --porcelain 2>&1)"
+restore_check_hidden_collision_code=$?
+set -e
+assert_exit_code 3 "${restore_check_hidden_collision_code}" "restore-check should return 3 for hidden-path untracked collisions"
+assert_contains $'restore_check\tsnapshot_id='"${hidden_collision_snapshot_id}"$'\trepo=.\t' "${restore_check_hidden_collision_output}" "hidden collision restore-check should include root repo row"
+assert_contains "untracked_collision_count=1" "${restore_check_hidden_collision_output}" "hidden collision restore-check should report one collision"
+assert_contains "has_issues=true" "${restore_check_hidden_collision_output}" "hidden collision restore-check should mark compatibility issues"
+
+git -C "${root_repo}" reset --hard >/dev/null
+git -C "${root_repo}" clean -fd >/dev/null
+
 # Simulate missing nested repo and ensure restore-check reports issues with exit code 3.
 rm -rf "${root_repo}/modules/sub1/modules/sub2"
 

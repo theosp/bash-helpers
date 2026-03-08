@@ -73,7 +73,35 @@ assert_contains "rejects=0" "${restore_collision_output}" "collision-only partia
 assert_contains "collisions=1" "${restore_collision_output}" "collision-only partial restore should report collision count"
 assert_contains "exit_code=4" "${restore_collision_output}" "collision partial summary should include exit code"
 
-# Case D: porcelain rollback mode keeps legacy atomic semantics.
+# Case D: hidden-path untracked collisions must be preserved in reject mode.
+git -C "${root_repo}" reset --hard >/dev/null
+git -C "${root_repo}" clean -fd >/dev/null
+mkdir -p "${root_repo}/.cursor/skills/migration-package-descriptor"
+printf "snapshot-hidden\n" > "${root_repo}/.cursor/skills/migration-package-descriptor/SKILL.md"
+create_hidden_collision_output="$(cd "${root_repo}" && git_snapshot_test_cmd create)"
+snapshot_id_hidden_collision="$(git_snapshot_test_get_snapshot_id_from_create_output "${create_hidden_collision_output}")"
+
+git -C "${root_repo}" reset --hard >/dev/null
+git -C "${root_repo}" clean -fd >/dev/null
+mkdir -p "${root_repo}/.cursor/skills/migration-package-descriptor"
+printf "current-hidden-collision\n" > "${root_repo}/.cursor/skills/migration-package-descriptor/SKILL.md"
+
+set +e
+restore_hidden_collision_output="$(cd "${root_repo}" && git_snapshot_test_cmd restore "${snapshot_id_hidden_collision}" --porcelain 2>&1)"
+restore_hidden_collision_code=$?
+set -e
+
+assert_exit_code 4 "${restore_hidden_collision_code}" "reject mode should return 4 on hidden-path untracked collisions"
+assert_contains $'restore_collision\tsnapshot_id='"${snapshot_id_hidden_collision}"$'\trepo=.\tfile=.cursor/skills/migration-package-descriptor/SKILL.md' "${restore_hidden_collision_output}" "reject mode should emit hidden collision rows"
+assert_contains $'restore_summary\tsnapshot_id='"${snapshot_id_hidden_collision}"$'\tmode=reject\tresult=partial' "${restore_hidden_collision_output}" "hidden collision restore should emit partial summary"
+assert_contains "collisions=1" "${restore_hidden_collision_output}" "hidden collision restore should report one collision"
+assert_contains "exit_code=4" "${restore_hidden_collision_output}" "hidden collision restore should include partial exit code"
+assert_eq "current-hidden-collision" "$(cat "${root_repo}/.cursor/skills/migration-package-descriptor/SKILL.md")" "reject mode should preserve the colliding hidden file"
+
+hidden_compare_after_partial="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${snapshot_id_hidden_collision}" --repo . --all --porcelain)"
+assert_contains $'compare_file\tsnapshot_id='"${snapshot_id_hidden_collision}"$'\trepo=.\tfile=.cursor/skills/migration-package-descriptor/SKILL.md\tstatus=unresolved_diverged' "${hidden_compare_after_partial}" "compare should keep hidden collision unresolved after partial restore"
+
+# Case E: porcelain rollback mode keeps legacy atomic semantics.
 git -C "${root_repo}" reset --hard >/dev/null
 git -C "${root_repo}" clean -fd >/dev/null
 printf "rollback-target\n" >> "${root_repo}/root.txt"

@@ -124,7 +124,7 @@ inspect
   - `--diff`      : raw patch body for staged/unstaged (default: off)
 
 restore-check
-  Compares snapshot restore readiness against current tree (non-mutating):
+  Compares snapshot default reject-mode restore readiness against current tree (non-mutating):
   - commit relation
   - apply-check status for staged/unstaged patches
   - untracked collision detection
@@ -443,8 +443,9 @@ _git_snapshot_calculate_repo_state() {
     GSN_AHEAD_COUNT="${rest%%|*}"
     GSN_BEHIND_COUNT="${rest##*|}"
 
-    GSN_APPLY_CHECK_STAGED="$(_git_snapshot_inspect_apply_check_staged "${GSN_REPO_ABS}" "${GSN_REPO_BUNDLE_DIR}")"
-    GSN_APPLY_CHECK_UNSTAGED="$(_git_snapshot_inspect_apply_check_unstaged "${GSN_REPO_ABS}" "${GSN_REPO_BUNDLE_DIR}")"
+    _git_snapshot_inspect_restore_apply_checks "${GSN_REPO_ABS}" "${GSN_REPO_BUNDLE_DIR}"
+    GSN_APPLY_CHECK_STAGED="${GSN_INSPECT_APPLY_CHECK_STAGED}"
+    GSN_APPLY_CHECK_UNSTAGED="${GSN_INSPECT_APPLY_CHECK_UNSTAGED}"
     GSN_UNTRACKED_COLLISIONS="$(_git_snapshot_inspect_untracked_collisions "${GSN_REPO_ABS}" "${GSN_REPO_BUNDLE_DIR}")"
     GSN_UNTRACKED_COLLISION_COUNT="$(_git_snapshot_inspect_count_lines "${GSN_UNTRACKED_COLLISIONS}")"
   else

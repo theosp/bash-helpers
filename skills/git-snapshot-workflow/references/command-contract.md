@@ -58,7 +58,7 @@
   - Non-mutating.
 
 - `git-snapshot restore-check <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]`
-  - Checks restore compatibility against current tree.
+  - Checks default reject-mode restore compatibility against current tree.
   - Human default is summary-first (issues-focused).
   - `--details` prints per-repo detail sections; `--files` implies details.
   - Exit codes:

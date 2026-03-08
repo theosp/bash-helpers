@@ -42,6 +42,47 @@ _git_snapshot_restore_validate_untracked_tar() {
   return 0
 }
 
+_git_snapshot_restore_collect_untracked_paths() {
+  local repo_bundle_dir="$1"
+  local manifest_file="${repo_bundle_dir}/untracked.paths.b64"
+  local tar_file="${repo_bundle_dir}/untracked.tar"
+  local encoded_path raw_path
+
+  if [[ -f "${manifest_file}" ]]; then
+    while IFS= read -r encoded_path || [[ -n "${encoded_path}" ]]; do
+      [[ -z "${encoded_path}" ]] && continue
+      _git_snapshot_store_base64_decode "${encoded_path}"
+      printf "\n"
+    done < "${manifest_file}"
+    return 0
+  fi
+
+  if [[ ! -f "${tar_file}" ]]; then
+    return 0
+  fi
+
+  while IFS= read -r raw_path || [[ -n "${raw_path}" ]]; do
+    [[ -z "${raw_path}" ]] && continue
+    raw_path="$(printf "%b" "${raw_path}")"
+    printf "%s\n" "${raw_path}"
+  done < <(tar -tf "${tar_file}")
+}
+
+_git_snapshot_restore_list_untracked_collisions() {
+  local repo_abs="$1"
+  local repo_bundle_dir="$2"
+  local file collisions=""
+
+  while IFS= read -r file; do
+    [[ -z "${file}" ]] && continue
+    if [[ -e "${repo_abs}/${file}" || -L "${repo_abs}/${file}" ]] || git -C "${repo_abs}" ls-files --error-unmatch -- "${file}" >/dev/null 2>&1; then
+      collisions+="${file}"$'\n'
+    fi
+  done < <(_git_snapshot_restore_collect_untracked_paths "${repo_bundle_dir}")
+
+  printf "%s" "${collisions}" | sed '/^$/d'
+}
+
 _git_snapshot_restore_single_repo() {
   local repo_abs="$1"
   local repo_bundle_dir="$2"
@@ -203,6 +244,7 @@ _git_snapshot_restore_apply_patch_reject() {
 _git_snapshot_restore_restore_untracked_reject() {
   local repo_abs="$1"
   local repo_bundle_dir="$2"
+  local precomputed_collision_files="${3:-}"
 
   GSN_RESTORE_UNTRACKED_STATUS="none"
   GSN_RESTORE_UNTRACKED_COLLISION_FILES=""
@@ -220,7 +262,11 @@ _git_snapshot_restore_restore_untracked_reject() {
   fi
 
   local collision_files
-  collision_files="$(_git_snapshot_inspect_untracked_collisions "${repo_abs}" "${repo_bundle_dir}")"
+  if [[ -n "${precomputed_collision_files}" ]]; then
+    collision_files="${precomputed_collision_files}"
+  else
+    collision_files="$(_git_snapshot_restore_list_untracked_collisions "${repo_abs}" "${repo_bundle_dir}")"
+  fi
   if [[ -n "${collision_files}" ]]; then
     GSN_RESTORE_UNTRACKED_STATUS="collision"
     GSN_RESTORE_UNTRACKED_COLLISION_FILES="$(_git_snapshot_restore_dedup_lines "${collision_files}")"
@@ -247,7 +293,7 @@ _git_snapshot_restore_restore_untracked_reject() {
       GSN_RESTORE_UNTRACKED_ERROR="failed to extract ${tar_entry} (${err_output})"
       return 0
     fi
-  done < <(tar -tf "${tar_file}")
+  done < <(_git_snapshot_restore_collect_untracked_paths "${repo_bundle_dir}")
 
   if [[ "${GSN_RESTORE_UNTRACKED_STATUS}" != "collision" ]]; then
     GSN_RESTORE_UNTRACKED_STATUS="ok"
@@ -267,6 +313,9 @@ _git_snapshot_restore_single_repo_reject() {
   GSN_RESTORE_REPO_REJECT_ROWS=""
   GSN_RESTORE_REPO_COLLISION_ROWS=""
 
+  local preclean_collision_files=""
+  preclean_collision_files="$(_git_snapshot_restore_dedup_lines "$(_git_snapshot_restore_list_untracked_collisions "${repo_abs}" "${repo_bundle_dir}")")"
+
   local err_output=""
   if ! err_output="$(git -C "${repo_abs}" reset --hard 2>&1 >/dev/null)"; then
     if [[ -z "${err_output}" ]]; then
@@ -276,7 +325,13 @@ _git_snapshot_restore_single_repo_reject() {
     GSN_RESTORE_REPO_FAILURE_REASON="git reset --hard failed (${err_output})"
     return 0
   fi
-  if ! err_output="$(git -C "${repo_abs}" clean -fd 2>&1 >/dev/null)"; then
+  local -a clean_cmd=(git -C "${repo_abs}" clean -fd)
+  local collision_file=""
+  while IFS= read -r collision_file; do
+    [[ -z "${collision_file}" ]] && continue
+    clean_cmd+=(-e "${collision_file}")
+  done <<< "${preclean_collision_files}"
+  if ! err_output="$("${clean_cmd[@]}" 2>&1 >/dev/null)"; then
     if [[ -z "${err_output}" ]]; then
       err_output="unknown error"
     fi
@@ -316,7 +371,7 @@ _git_snapshot_restore_single_repo_reject() {
     done <<< "${GSN_RESTORE_PATCH_REJECT_FILES}"
   fi
 
-  _git_snapshot_restore_restore_untracked_reject "${repo_abs}" "${repo_bundle_dir}"
+  _git_snapshot_restore_restore_untracked_reject "${repo_abs}" "${repo_bundle_dir}" "${preclean_collision_files}"
   GSN_RESTORE_REPO_UNTRACKED_STATUS="${GSN_RESTORE_UNTRACKED_STATUS}"
   if [[ "${GSN_RESTORE_UNTRACKED_STATUS}" == "fail" ]]; then
     GSN_RESTORE_REPO_STATUS="failed"

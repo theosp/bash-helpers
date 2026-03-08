@@ -22,6 +22,11 @@ FUTURE
   - cache reuse now stays valid when unrelated paths outside the snapshot target change
   - add targeted-signature, metadata-integrity, and strict v4-only coverage for the fast path.
 
+* Align `restore-check` with default reject-mode restore:
+  - validate unstaged apply-checks after staged patches
+  - detect hidden-path untracked collisions from persisted manifests
+  - preserve colliding files during reject-mode restore/reset flows
+
 v1.0.37 (2026-03-06)
 
 * Harden parallel `git-snapshot compare` worker queue setup:

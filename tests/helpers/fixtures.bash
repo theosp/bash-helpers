@@ -88,6 +88,34 @@ git_snapshot_test_get_snapshot_id_from_create_output() {
   printf "%s\n" "${output}" | tail -n 1
 }
 
+git_snapshot_test_extract_porcelain_field() {
+  local output="$1"
+  local row_kind="$2"
+  local field_name="$3"
+
+  printf "%s\n" "${output}" | awk -F'\t' -v row="${row_kind}" -v key="${field_name}" '
+    $1 == row {
+      for (i = 1; i <= NF; i++) {
+        if ($i ~ ("^" key "=")) {
+          sub("^" key "=", "", $i)
+          print $i
+          exit
+        }
+      }
+    }
+  '
+}
+
+git_snapshot_test_normalize_compare_porcelain() {
+  local output="$1"
+
+  printf "%s\n" "${output}" | sed -E \
+    -e 's/current_root=[^\t]+/current_root=NORMALIZED/' \
+    -e 's/elapsed_ms=[0-9]+/elapsed_ms=NORMALIZED/' \
+    -e 's/cache_hit_repos=[0-9]+/cache_hit_repos=NORMALIZED/' \
+    -e 's/cache_miss_repos=[0-9]+/cache_miss_repos=NORMALIZED/'
+}
+
 git_snapshot_test_snapshot_root_for_repo() {
   local root_repo="$1"
   printf "%s/git-snapshots/%s\n" "${TEST_HOME}" "$(basename "${root_repo}")"

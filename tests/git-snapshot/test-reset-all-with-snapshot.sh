@@ -29,6 +29,10 @@ git -C "${sub2}" add sub2.txt
 printf "sub2-unstaged\n" >> "${sub2}/sub2.txt"
 printf "sub2-untracked\n" > "${sub2}/reset-all-sub2.txt"
 
+user_snapshot_output="$(cd "${root_repo}" && git_snapshot_test_cmd create user-before-reset)"
+user_snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${user_snapshot_output}")"
+assert_eq "user-before-reset" "${user_snapshot_id}" "explicit user snapshot should be preserved before reset-all"
+
 reset_output="$(cd "${root_repo}" && git_snapshot_test_cmd reset-all --snapshot 2>&1)"
 assert_contains "Created auto snapshot" "${reset_output}" "reset-all --snapshot should create auto snapshot"
 assert_contains "Clear completed" "${reset_output}" "reset-all should report clear completion"
@@ -61,3 +65,21 @@ assert_contains "Auto: *" "${auto_details}" "reset-all auto snapshot details sho
 list_porcelain_output="$(cd "${root_repo}" && git_snapshot_test_cmd list --include-auto --porcelain)"
 assert_contains $'snapshot\tid='"${auto_snapshot_id}"$'\t' "${list_porcelain_output}" "include-auto porcelain should include reset-all auto snapshot"
 assert_contains "origin=auto" "${list_porcelain_output}" "include-auto porcelain should mark reset-all snapshot origin=auto"
+
+default_compare_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare --all --porcelain)"
+assert_contains $'compare_target\tselected_snapshot_id='"${user_snapshot_id}"$'\tselection_mode=latest-user-default\tsnapshot_origin=user' "${default_compare_output}" "no-id compare should still prefer the latest user snapshot over newer auto snapshots"
+
+set +e
+restore_check_output="$(cd "${root_repo}" && git_snapshot_test_cmd restore-check "${auto_snapshot_id}" --all-repos --porcelain 2>&1)"
+restore_check_code=$?
+set -e
+assert_exit_code 0 "${restore_check_code}" "auto snapshot restore-check should stay clean after reset-all"
+assert_not_contains "has_issues=true" "${restore_check_output}" "auto snapshot restore-check should report no blocking issues"
+
+export GIT_SNAPSHOT_CONFIRM_RESTORE="RESTORE"
+restore_output="$(cd "${root_repo}" && git_snapshot_test_cmd restore "${auto_snapshot_id}" --on-conflict rollback --porcelain)"
+assert_contains $'restore_summary\tsnapshot_id='"${auto_snapshot_id}"$'\tmode=rollback\tresult=success' "${restore_output}" "reset-all auto snapshot should restore successfully"
+assert_contains "exit_code=0" "${restore_output}" "reset-all auto snapshot restore should return success exit code"
+
+compare_after_restore_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${auto_snapshot_id}" --all --porcelain)"
+assert_eq "0" "$(git_snapshot_test_extract_porcelain_field "${compare_after_restore_output}" "compare_summary" "unresolved_total")" "auto snapshot compare should return to zero unresolved items after restore"
