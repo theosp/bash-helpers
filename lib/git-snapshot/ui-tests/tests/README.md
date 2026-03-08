@@ -64,6 +64,7 @@ lib/git-snapshot/ui-tests/
         ├── 00-compare-gui-scroll.spec.cjs
         ├── 01-compare-gui-open-external.spec.cjs
         ├── 02-compare-gui-load-error.spec.cjs
+        ├── 03-compare-gui-open-external-autodetect.spec.cjs
         └── prepare-env.bash
 ```
 
@@ -73,5 +74,6 @@ lib/git-snapshot/ui-tests/
 - Category setup happens in `prepare-env.bash`, which builds a real `git-snapshot compare --gui` fixture and exports the GUI URL for Playwright.
 - When a category defines `prepare-env.bash`, category-level runs prepare an isolated fixture per spec so `./run-tests.sh general-ui` and `./run-tests.sh general-ui 02` use matching setup semantics.
 - Automated `01` coverage stubs the external diff tool via test-only env vars so the suite can verify the selected file pair without opening a real app.
+- Automated `03` coverage exercises real tool auto-detection with fake `meld`, `opendiff`, and `code` binaries on `PATH`, including the no-tool error path.
 - Manual mode supports interactive category selection with arrow keys or number input, remembers the last selected category, opens the compare GUI in your browser, keeps the session alive until `Ctrl+C`, and uses the real external diff tool detection path.
-- `tests/git-snapshot/test-compare-gui-suite.sh`, `tests/git-snapshot/test-compare-gui-playwright.sh`, and `tests/git-snapshot/test-compare-gui-open.sh` remain compatibility delegates for the existing shell test suite.
+- `tests/git-snapshot/test-compare-gui-suite.sh`, `tests/git-snapshot/test-compare-gui-playwright.sh`, `tests/git-snapshot/test-compare-gui-open.sh`, and `tests/git-snapshot/test-compare-gui-open-autodetect.sh` remain compatibility delegates for the existing shell test suite.

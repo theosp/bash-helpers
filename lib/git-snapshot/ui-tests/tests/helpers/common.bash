@@ -130,6 +130,69 @@ EOF
   chmod +x "${fake_tool_path}"
 }
 
+git_snapshot_ui_write_fake_named_external_diff_tool() {
+  local fake_bin_dir="$1"
+  local tool_name="$2"
+  local external_diff_log="$3"
+  local tool_path="${fake_bin_dir}/${tool_name}"
+
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf '\n'
+    printf 'set -euo pipefail\n'
+    printf '\n'
+    printf 'LOG_FILE=%q\n' "${external_diff_log}"
+    printf 'TOOL_NAME=%q\n' "${tool_name}"
+    printf '\n'
+    printf '{\n'
+    printf '  printf "tool=%%s\\n" "${TOOL_NAME}"\n'
+    printf '  printf "argc=%%s\\n" "$#"\n'
+    printf '  i=0\n'
+    printf '  for arg in "$@"; do\n'
+    printf '    printf "arg_%%s=%%s\\n" "${i}" "${arg}"\n'
+    printf '    i=$((i + 1))\n'
+    printf '  done\n'
+    printf '  printf "\\n"\n'
+    printf '} >> "${LOG_FILE}"\n'
+  } > "${tool_path}"
+
+  chmod +x "${tool_path}"
+}
+
+git_snapshot_ui_write_fake_which() {
+  local fake_bin_dir="$1"
+  local which_path="${fake_bin_dir}/which"
+
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf '\n'
+    printf 'set -euo pipefail\n'
+    printf 'FAKE_BIN_DIR=%q\n' "${fake_bin_dir}"
+    printf 'CANDIDATE=${1:-}\n'
+    printf 'TARGET="${FAKE_BIN_DIR}/${CANDIDATE}"\n'
+    printf 'if [[ -n "${CANDIDATE}" && -x "${TARGET}" && "${CANDIDATE}" != "which" ]]; then\n'
+    printf '  printf "%%s\\n" "${TARGET}"\n'
+    printf '  exit 0\n'
+    printf 'fi\n'
+    printf 'exit 1\n'
+  } > "${which_path}"
+
+  chmod +x "${which_path}"
+}
+
+git_snapshot_ui_write_fake_auto_detect_tools() {
+  local runtime_dir="$1"
+  local external_diff_log="$2"
+  local fake_bin_dir="${runtime_dir}/fake-bin"
+  local tool_name=""
+
+  mkdir -p "${fake_bin_dir}"
+  git_snapshot_ui_write_fake_which "${fake_bin_dir}"
+  for tool_name in meld opendiff code; do
+    git_snapshot_ui_write_fake_named_external_diff_tool "${fake_bin_dir}" "${tool_name}" "${external_diff_log}"
+  done
+}
+
 git_snapshot_ui_prepare_general_ui_suite() {
   local runtime_dir="$1"
   local selected_test="${2:-}"
@@ -143,6 +206,7 @@ git_snapshot_ui_prepare_general_ui_suite() {
   local external_diff_tool=""
   local external_diff_log=""
   local external_diff_spawn_log=""
+  local fake_bin_dir=""
   local i=0
 
   mkdir -p "${runtime_dir}"
@@ -185,13 +249,19 @@ git_snapshot_ui_prepare_general_ui_suite() {
     export GIT_SNAPSHOT_GUI_STREAM_OUTPUT=1
 
     if [[ "${run_mode}" != "manual" ]]; then
-      external_diff_tool="fake-tool"
       external_diff_log="${runtime_dir}/external-diff.log"
       external_diff_spawn_log="${runtime_dir}/external-diff-spawn.log"
-      git_snapshot_ui_write_fake_external_diff_tool "${runtime_dir}" "${external_diff_log}"
-      export GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_TOOL="${external_diff_tool}"
+      fake_bin_dir="${runtime_dir}/fake-bin"
+      if [[ "${selected_test}" == "03" ]]; then
+        git_snapshot_ui_write_fake_auto_detect_tools "${runtime_dir}" "${external_diff_log}"
+        unset GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_TOOL
+      else
+        external_diff_tool="fake-tool"
+        git_snapshot_ui_write_fake_external_diff_tool "${runtime_dir}" "${external_diff_log}"
+        export GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_TOOL="${external_diff_tool}"
+      fi
       export GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_SPAWN_LOG="${external_diff_spawn_log}"
-      export PATH="${runtime_dir}/fake-bin:${PATH}"
+      export PATH="${fake_bin_dir}:${PATH}"
       unset GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_LOG
     else
       unset GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_TOOL
@@ -213,10 +283,14 @@ git_snapshot_ui_prepare_general_ui_suite() {
   external_diff_tool=""
   external_diff_log=""
   external_diff_spawn_log=""
+  fake_bin_dir=""
   if [[ "${run_mode}" != "manual" ]]; then
-    external_diff_tool="fake-tool"
     external_diff_log="${runtime_dir}/external-diff.log"
     external_diff_spawn_log="${runtime_dir}/external-diff-spawn.log"
+    fake_bin_dir="${runtime_dir}/fake-bin"
+    if [[ "${selected_test}" != "03" ]]; then
+      external_diff_tool="fake-tool"
+    fi
   fi
 
   gui_url="$(git_snapshot_ui_wait_for_gui_url "${gui_log_file}" "${gui_pid}")"
@@ -230,6 +304,7 @@ git_snapshot_ui_prepare_general_ui_suite() {
     GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_TOOL "${external_diff_tool}" \
     GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_LOG "${external_diff_log}" \
     GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_SPAWN_LOG "${external_diff_spawn_log}" \
+    GIT_SNAPSHOT_UI_TEST_FAKE_BIN_DIR "${fake_bin_dir}" \
     GIT_SNAPSHOT_UI_TEST_SELECTED_TEST "${selected_test}" \
     GIT_SNAPSHOT_UI_TEST_RUN_MODE "${run_mode}"
   git_snapshot_ui_write_cleanup_script "${runtime_dir}/cleanup.bash" "${gui_pid}" "${TEST_SANDBOX}"
