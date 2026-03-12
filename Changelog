@@ -3,9 +3,9 @@ FUTURE
 * Stream `compare --gui` launcher output live while preserving clean crash
   diagnostics.
 
-* Add Playwright UI regression coverage for `compare --gui` and harden the
-  Node GUI for cached-row validation, inline load failures, responsive
-  layout, and external diff launching.
+* Add Playwright UI regression coverage for the shared browser UI and harden
+  cached-row validation, inline load failures, responsive layout, inspect
+  previews, and external diff launching.
 
 * Share the local browser UI across `git-snapshot compare --gui` and
   `inspect --gui`:
