@@ -1,5 +1,7 @@
 FUTURE
 
+v1.0.38 (2026-03-12)
+
 * Stream `compare --gui` launcher output live while preserving clean crash
   diagnostics.
 
