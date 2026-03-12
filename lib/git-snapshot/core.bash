@@ -30,7 +30,7 @@ Usage
   git-snapshot reset-all [--snapshot|--no-snapshot] [--porcelain]
   git-snapshot rename <old_snapshot_id> <new_snapshot_id> [--porcelain]
   git-snapshot list [--include-auto] [--porcelain]
-  git-snapshot inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--name-only|--stat|--diff] [--porcelain]
+  git-snapshot inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--name-only|--stat|--diff] [--gui] [--porcelain]
   git-snapshot restore-check <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]
   git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--gui] [--porcelain]
   git-snapshot restore <snapshot_id> [--on-conflict <reject|rollback>] [--porcelain]
@@ -122,6 +122,14 @@ inspect
   - `--name-only` : file paths only (default: off)
   - `--stat`      : git apply --stat summary (default: on)
   - `--diff`      : raw patch body for staged/unstaged (default: off)
+  - `--gui`       : launch shared snapshot browser UI (incompatible with `--porcelain`)
+  GUI behavior:
+  - `--gui` ignores `--name-only`, `--stat`, and `--diff`
+  Porcelain output:
+  - `inspect_target` summary row includes `contract_version=2`
+  - `inspect_repo` emits per-repo state/compatibility counters
+  - `inspect` emits per-category captured file counts
+  - `inspect_file` emits one row per captured file
 
 restore-check
   Compares snapshot default reject-mode restore readiness against current tree (non-mutating):
@@ -165,6 +173,13 @@ compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--gui] [--porcelain]
   - `--diff`            : include unified diffs for `unresolved_diverged` rows
   - `--gui`             : launch visual compare UI (incompatible with `--porcelain`)
   - `--porcelain`       : machine output (`compare_target` / `compare_file` / `compare_summary`, contract_version=5)
+  GUI external diff overrides:
+  - `GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_TOOL=<tool>` : force a built-in selector
+  - `GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_COMMAND_TEMPLATE='<command> ... $SOURCE ... $TARGET'` : force an explicit launch template
+  - `GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_CANDIDATES=<tool1,tool2,...>` : override auto-detect selector order
+  - Canonical selectors: `meld`, `kdiff3`, `opendiff`, `bcompare`, `code`
+  - command templates are tokenized into argv entries with quote/backslash handling; they are not shell-evaluated
+  - use `$SOURCE` / `${SOURCE}` for the snapshot-side file and `$TARGET` / `${TARGET}` for the current working-tree file
   Snapshot integrity:
   - compare requires `git_snapshot_meta_v4` metadata and intact compare-target metadata
   - corrupt or unsupported snapshots fail instead of rebuilding fallback inputs
@@ -239,6 +254,7 @@ Deep inspection:
   git-snapshot inspect before-rebase --name-only
   git-snapshot inspect before-rebase --repo modules/sub1 --staged --diff
   git-snapshot inspect before-rebase --all-repos --name-only
+  git-snapshot inspect before-rebase --gui
   git-snapshot inspect before-rebase --porcelain
   git-snapshot restore-check before-rebase
   git-snapshot restore-check before-rebase --details
@@ -383,7 +399,7 @@ _git_snapshot_create_internal() {
     if [[ "${has_untracked}" == "true" ]]; then
       (
         cd "${repo_abs}"
-        tar -cf "${repo_dir}/untracked.tar" "${untracked_files[@]}"
+        tar -cf "${repo_dir}/untracked.tar" -- "${untracked_files[@]}"
       )
 
       : > "${repo_dir}/untracked.paths.b64"
@@ -1115,6 +1131,7 @@ _git_snapshot_cmd_inspect() {
   local snapshot_id=""
   local repo_filter=""
   local porcelain="false"
+  local show_gui="false"
   local include_staged="false"
   local include_unstaged="false"
   local include_untracked="false"
@@ -1134,6 +1151,9 @@ _git_snapshot_cmd_inspect() {
         ;;
       --porcelain)
         porcelain="true"
+        ;;
+      --gui)
+        show_gui="true"
         ;;
       --staged)
         include_staged="true"
@@ -1184,7 +1204,7 @@ _git_snapshot_cmd_inspect() {
     _git_snapshot_ui_err "Missing snapshot_id for inspect"
     return 1
   fi
-  if (( render_flag_count > 1 )); then
+  if [[ "${show_gui}" != "true" && ${render_flag_count} -gt 1 ]]; then
     _git_snapshot_ui_err "Only one of --name-only/--stat/--diff is allowed"
     return 1
   fi
@@ -1205,8 +1225,48 @@ _git_snapshot_cmd_inspect() {
     _git_snapshot_validate_repo_filter "${snapshot_path}" "${repo_filter}"
   fi
 
+  if [[ "${show_gui}" == "true" && "${porcelain}" == "true" ]]; then
+    _git_snapshot_ui_err "inspect --gui is incompatible with --porcelain."
+    return 1
+  fi
+
+  if [[ "${show_gui}" == "true" && ${render_flag_count} -gt 0 ]]; then
+    _git_snapshot_ui_warn "inspect --gui ignores --name-only/--stat/--diff (GUI renders per-file previews internally)."
+    render_mode="stat"
+  fi
+
+  if [[ "${show_gui}" == "true" ]]; then
+    _git_snapshot_launch_gui \
+      "inspect" \
+      "${root_repo}" \
+      "${snapshot_id}" \
+      "${repo_filter}" \
+      "false" \
+      "${include_staged}" \
+      "${include_unstaged}" \
+      "${include_untracked}" \
+      "${show_all_repos}"
+    return $?
+  fi
+
   local repo_id rel_path snapshot_head status_hash
   if [[ "${porcelain}" == "true" ]]; then
+    local repos_in_scope=0
+    local repos_with_changes=0
+    local total_staged=0
+    local total_unstaged=0
+    local total_untracked=0
+    local repo_rows=""
+    local category_rows=""
+    local file_rows=""
+    local safe_repo=""
+    local safe_file=""
+    local safe_snapshot_head=""
+    local safe_current_head=""
+    local safe_current_branch=""
+    local safe_relation=""
+    local repo_has_changes="false"
+
     while IFS=$'\t' read -r repo_id rel_path snapshot_head status_hash; do
       [[ -z "${repo_id}" ]] && continue
       if [[ -n "${repo_filter}" && "${rel_path}" != "${repo_filter}" ]]; then
@@ -1214,29 +1274,65 @@ _git_snapshot_cmd_inspect() {
       fi
 
       _git_snapshot_calculate_repo_state "${root_repo}" "${snapshot_path}" "${repo_id}" "${rel_path}" "${snapshot_head}" "${status_hash}"
+      repos_in_scope=$((repos_in_scope + 1))
+      total_staged=$((total_staged + GSN_STAGED_COUNT))
+      total_unstaged=$((total_unstaged + GSN_UNSTAGED_COUNT))
+      total_untracked=$((total_untracked + GSN_UNTRACKED_COUNT))
+
+      repo_has_changes="false"
+      if [[ "${GSN_STAGED_COUNT}" != "0" || "${GSN_UNSTAGED_COUNT}" != "0" || "${GSN_UNTRACKED_COUNT}" != "0" ]]; then
+        repo_has_changes="true"
+        repos_with_changes=$((repos_with_changes + 1))
+      fi
+
+      safe_repo="$(_git_snapshot_compare_sanitize_porcelain_value "${rel_path}")"
+      safe_snapshot_head="$(_git_snapshot_compare_sanitize_porcelain_value "${GSN_SNAPSHOT_HEAD}")"
+      safe_current_head="$(_git_snapshot_compare_sanitize_porcelain_value "${GSN_CURRENT_HEAD}")"
+      safe_current_branch="$(_git_snapshot_compare_sanitize_porcelain_value "${GSN_CURRENT_BRANCH}")"
+      safe_relation="$(_git_snapshot_compare_sanitize_porcelain_value "${GSN_RELATION}")"
+      repo_rows+="inspect_repo\tsnapshot_id=${snapshot_id}\trepo=${safe_repo}\thas_changes=${repo_has_changes}\tstaged_count=${GSN_STAGED_COUNT}\tunstaged_count=${GSN_UNSTAGED_COUNT}\tuntracked_count=${GSN_UNTRACKED_COUNT}\tsnapshot_head=${safe_snapshot_head}\tcurrent_head=${safe_current_head}\tcurrent_branch=${safe_current_branch}\trelation=${safe_relation}\tahead=${GSN_AHEAD_COUNT}\tbehind=${GSN_BEHIND_COUNT}\tapply_check_staged=${GSN_APPLY_CHECK_STAGED}\tapply_check_unstaged=${GSN_APPLY_CHECK_UNSTAGED}\tuntracked_collision_count=${GSN_UNTRACKED_COLLISION_COUNT}\n"
 
       if [[ "${include_staged}" == "true" ]]; then
-        printf "inspect\tsnapshot_id=%s\trepo=%s\tcategory=staged\tfile_count=%s\n" "${snapshot_id}" "${rel_path}" "${GSN_STAGED_COUNT}"
+        category_rows+="inspect\tsnapshot_id=${snapshot_id}\trepo=${safe_repo}\tcategory=staged\tfile_count=${GSN_STAGED_COUNT}\n"
         while IFS= read -r file; do
           [[ -z "${file}" ]] && continue
-          printf "inspect_file\trepo=%s\tcategory=staged\tfile=%s\n" "${rel_path}" "${file}"
+          safe_file="$(_git_snapshot_compare_sanitize_porcelain_value "${file}")"
+          file_rows+="inspect_file\tsnapshot_id=${snapshot_id}\trepo=${safe_repo}\tcategory=staged\tfile=${safe_file}\n"
         done <<< "${GSN_STAGED_FILES}"
       fi
       if [[ "${include_unstaged}" == "true" ]]; then
-        printf "inspect\tsnapshot_id=%s\trepo=%s\tcategory=unstaged\tfile_count=%s\n" "${snapshot_id}" "${rel_path}" "${GSN_UNSTAGED_COUNT}"
+        category_rows+="inspect\tsnapshot_id=${snapshot_id}\trepo=${safe_repo}\tcategory=unstaged\tfile_count=${GSN_UNSTAGED_COUNT}\n"
         while IFS= read -r file; do
           [[ -z "${file}" ]] && continue
-          printf "inspect_file\trepo=%s\tcategory=unstaged\tfile=%s\n" "${rel_path}" "${file}"
+          safe_file="$(_git_snapshot_compare_sanitize_porcelain_value "${file}")"
+          file_rows+="inspect_file\tsnapshot_id=${snapshot_id}\trepo=${safe_repo}\tcategory=unstaged\tfile=${safe_file}\n"
         done <<< "${GSN_UNSTAGED_FILES}"
       fi
       if [[ "${include_untracked}" == "true" ]]; then
-        printf "inspect\tsnapshot_id=%s\trepo=%s\tcategory=untracked\tfile_count=%s\n" "${snapshot_id}" "${rel_path}" "${GSN_UNTRACKED_COUNT}"
+        category_rows+="inspect\tsnapshot_id=${snapshot_id}\trepo=${safe_repo}\tcategory=untracked\tfile_count=${GSN_UNTRACKED_COUNT}\n"
         while IFS= read -r file; do
           [[ -z "${file}" ]] && continue
-          printf "inspect_file\trepo=%s\tcategory=untracked\tfile=%s\n" "${rel_path}" "${file}"
+          safe_file="$(_git_snapshot_compare_sanitize_porcelain_value "${file}")"
+          file_rows+="inspect_file\tsnapshot_id=${snapshot_id}\trepo=${safe_repo}\tcategory=untracked\tfile=${safe_file}\n"
         done <<< "${GSN_UNTRACKED_FILES}"
       fi
     done < <(_git_snapshot_store_read_repo_entries "${snapshot_path}")
+
+    printf "inspect_target\tsnapshot_id=%s\trepo_filter=%s\tshow_all_repos=%s\tinclude_staged=%s\tinclude_unstaged=%s\tinclude_untracked=%s\trepos_in_scope=%s\trepos_with_changes=%s\ttotal_staged=%s\ttotal_unstaged=%s\ttotal_untracked=%s\tcontract_version=2\n" \
+      "${snapshot_id}" \
+      "$(_git_snapshot_compare_sanitize_porcelain_value "${repo_filter}")" \
+      "${show_all_repos}" \
+      "${include_staged}" \
+      "${include_unstaged}" \
+      "${include_untracked}" \
+      "${repos_in_scope}" \
+      "${repos_with_changes}" \
+      "${total_staged}" \
+      "${total_unstaged}" \
+      "${total_untracked}"
+    printf "%b" "${repo_rows}"
+    printf "%b" "${category_rows}"
+    printf "%b" "${file_rows}"
     return 0
   fi
 
@@ -3465,12 +3561,16 @@ _git_snapshot_compare_engine() {
   rm -f "${rows_file}" "${tasks_file}"
   return 0
 }
-_git_snapshot_compare_launch_gui() {
-  local root_repo="$1"
-  local snapshot_id="$2"
-  local selection_mode="$3"
+_git_snapshot_launch_gui() {
+  local mode="$1"
+  local root_repo="$2"
+  local snapshot_id="$3"
   local repo_filter="$4"
-  local show_all="$5"
+  local compare_show_all="$5"
+  local inspect_include_staged="$6"
+  local inspect_include_unstaged="$7"
+  local inspect_include_untracked="$8"
+  local inspect_show_all_repos="$9"
   local gui_output=""
   local gui_status=0
   local line=""
@@ -3490,13 +3590,13 @@ _git_snapshot_compare_launch_gui() {
   fi
 
   if ! command -v node >/dev/null 2>&1; then
-    _git_snapshot_ui_err "node is required for compare --gui."
+    _git_snapshot_ui_err "node is required for ${mode} --gui."
     return 1
   fi
 
   if [[ "${stream_output}" == "1" || "${stream_output}" == "true" ]]; then
     gui_log_file="$(mktemp "${TMPDIR:-/tmp}/git-snapshot-gui.XXXXXX")" || {
-      _git_snapshot_ui_err "Failed to allocate compare --gui output log."
+      _git_snapshot_ui_err "Failed to allocate ${mode} --gui output log."
       return 1
     }
 
@@ -3504,11 +3604,15 @@ _git_snapshot_compare_launch_gui() {
 
     set +e
     node -e "${node_wrapper_script}" "${gui_script}" \
+      --mode "${mode}" \
       --root-repo "${root_repo}" \
       --snapshot-id "${snapshot_id}" \
-      --selection-mode "${selection_mode}" \
       --repo-filter "${repo_filter}" \
-      --show-all "${show_all}" \
+      --compare-show-all "${compare_show_all}" \
+      --inspect-include-staged "${inspect_include_staged}" \
+      --inspect-include-unstaged "${inspect_include_unstaged}" \
+      --inspect-include-untracked "${inspect_include_untracked}" \
+      --inspect-show-all-repos "${inspect_show_all_repos}" \
       --git-snapshot-bin "${snapshot_bin}" 2>&1 | tee "${gui_log_file}"
     gui_status="${PIPESTATUS[0]}"
     set -e
@@ -3523,11 +3627,15 @@ _git_snapshot_compare_launch_gui() {
 
   if [[ "${stream_output}" != "1" && "${stream_output}" != "true" ]]; then
     gui_output="$(node "${gui_script}" \
+      --mode "${mode}" \
       --root-repo "${root_repo}" \
       --snapshot-id "${snapshot_id}" \
-      --selection-mode "${selection_mode}" \
       --repo-filter "${repo_filter}" \
-      --show-all "${show_all}" \
+      --compare-show-all "${compare_show_all}" \
+      --inspect-include-staged "${inspect_include_staged}" \
+      --inspect-include-unstaged "${inspect_include_unstaged}" \
+      --inspect-include-untracked "${inspect_include_untracked}" \
+      --inspect-show-all-repos "${inspect_show_all_repos}" \
       --git-snapshot-bin "${snapshot_bin}" 2>&1)" || gui_status=$?
   fi
 
@@ -3539,7 +3647,7 @@ _git_snapshot_compare_launch_gui() {
   fi
 
   if [[ "${gui_status}" -ge 128 ]]; then
-    _git_snapshot_ui_err "compare --gui crashed before opening the UI."
+    _git_snapshot_ui_err "${mode} --gui crashed before opening the UI."
     _git_snapshot_ui_err "node diagnostics:"
     if [[ -n "${gui_output}" ]]; then
       while IFS= read -r line; do
@@ -3627,12 +3735,16 @@ _git_snapshot_cmd_compare() {
   _git_snapshot_resolve_compare_target "${root_repo}" "${snapshot_id}" || return 1
 
   if [[ "${show_gui}" == "true" ]]; then
-    _git_snapshot_compare_launch_gui \
+    _git_snapshot_launch_gui \
+      "compare" \
       "${root_repo}" \
       "${GSN_COMPARE_SNAPSHOT_ID}" \
-      "${GSN_COMPARE_SELECTION_MODE}" \
       "${repo_filter}" \
-      "${show_all}"
+      "${show_all}" \
+      "true" \
+      "true" \
+      "true" \
+      "false"
     return $?
   fi
 

@@ -35,5 +35,10 @@ assert_contains $'snapshot\tid='"${snapshot_id}" "${list_porcelain_output}" "lis
 assert_contains "origin=user" "${list_porcelain_output}" "list porcelain should include snapshot origin metadata"
 
 inspect_porcelain_output="$(cd "${root_repo}" && git_snapshot_test_cmd inspect "${snapshot_id}" --porcelain)"
+assert_contains $'inspect_target\tsnapshot_id='"${snapshot_id}" "${inspect_porcelain_output}" "inspect porcelain should include target summary row"
+assert_contains "contract_version=2" "${inspect_porcelain_output}" "inspect porcelain should expose the v2 contract marker"
+assert_contains $'inspect_repo\tsnapshot_id='"${snapshot_id}" "${inspect_porcelain_output}" "inspect porcelain should include repo summary rows"
 assert_contains $'inspect\tsnapshot_id='"${snapshot_id}" "${inspect_porcelain_output}" "inspect porcelain should include snapshot id"
-assert_contains $'inspect_file\trepo=' "${inspect_porcelain_output}" "inspect porcelain should include file rows"
+assert_contains $'inspect_file\tsnapshot_id='"${snapshot_id}" "${inspect_porcelain_output}" "inspect porcelain should include file rows"
+assert_contains "apply_check_staged=" "${inspect_porcelain_output}" "inspect repo rows should include staged apply-check status"
+assert_contains "untracked_collision_count=" "${inspect_porcelain_output}" "inspect repo rows should include untracked collision counts"

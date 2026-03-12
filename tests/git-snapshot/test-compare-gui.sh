@@ -26,7 +26,7 @@ assert_exit_code 1 "${incompatible_code}" "compare --gui should reject --porcela
 assert_contains "compare --gui is incompatible with --porcelain." "${incompatible_output}" "compare --gui should explain porcelain incompatibility"
 
 gui_default_output="$(cd "${root_repo}" && GIT_SNAPSHOT_GUI_TEST_MODE=1 git_snapshot_test_cmd compare "${snapshot_id}" --gui)"
-assert_contains "GUI_TEST snapshot_id=${snapshot_id}" "${gui_default_output}" "gui test mode should expose selected snapshot id"
+assert_contains "GUI_TEST mode=compare snapshot_id=${snapshot_id}" "${gui_default_output}" "gui test mode should expose selected snapshot id"
 assert_contains "show_all=false" "${gui_default_output}" "default gui compare should keep unresolved-only visibility"
 assert_contains "rows=0" "${gui_default_output}" "default gui compare should hide resolved rows"
 
@@ -50,10 +50,10 @@ assert_not_contains "Abort trap: 6" "${gui_stream_abort_output}" "streamed compa
 
 gui_diff_output="$(cd "${root_repo}" && GIT_SNAPSHOT_GUI_TEST_MODE=1 git_snapshot_test_cmd compare "${snapshot_id}" --diff --gui 2>&1)"
 assert_contains "compare --gui ignores --diff" "${gui_diff_output}" "gui compare should warn that --diff is ignored"
-assert_contains "GUI_TEST snapshot_id=${snapshot_id}" "${gui_diff_output}" "gui compare should still execute when --diff is also passed"
+assert_contains "GUI_TEST mode=compare snapshot_id=${snapshot_id}" "${gui_diff_output}" "gui compare should still execute when --diff is also passed"
 
 gui_all_output="$(cd "${root_repo}" && GIT_SNAPSHOT_GUI_TEST_MODE=1 git_snapshot_test_cmd compare "${snapshot_id}" --repo . --all --gui)"
-assert_contains "GUI_TEST snapshot_id=${snapshot_id}" "${gui_all_output}" "gui --all test mode should expose selected snapshot id"
+assert_contains "GUI_TEST mode=compare snapshot_id=${snapshot_id}" "${gui_all_output}" "gui --all test mode should expose selected snapshot id"
 assert_contains "show_all=true" "${gui_all_output}" "gui --all should propagate all-status visibility"
 assert_contains "rows=1" "${gui_all_output}" "gui --all should surface resolved rows"
 

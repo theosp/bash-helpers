@@ -128,7 +128,7 @@ start_gui_compare() {
   ) > "${gui_log_file}" 2>&1 &
   gui_pid=$!
 
-  wait_for_gui_log_line "${gui_log_file}" "${gui_pid}" "Compare GUI server:"
+  wait_for_gui_log_line "${gui_log_file}" "${gui_pid}" "Snapshot GUI server (compare):"
   printf "%s\n" "${gui_pid}"
 }
 

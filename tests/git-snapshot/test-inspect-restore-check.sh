@@ -57,10 +57,11 @@ assert_contains "Details (diff mode):" "${inspect_diff_output}" "inspect --diff 
 assert_contains "--- a/root.txt" "${inspect_diff_output}" "inspect --diff should include tracked patch body"
 
 inspect_porcelain_output="$(cd "${root_repo}" && git_snapshot_test_cmd inspect "${snapshot_id}" --repo . --all --porcelain)"
+assert_contains $'inspect_target\tsnapshot_id='"${snapshot_id}"$'\trepo_filter=.\tshow_all_repos=false\tinclude_staged=true\tinclude_unstaged=true\tinclude_untracked=true\trepos_in_scope=1\trepos_with_changes=1\ttotal_staged=1\ttotal_unstaged=1\ttotal_untracked=5\tcontract_version=2' "${inspect_porcelain_output}" "inspect porcelain should expose the v2 target contract marker"
 assert_contains $'inspect\tsnapshot_id='"${snapshot_id}"$'\trepo=.\tcategory=staged' "${inspect_porcelain_output}" "inspect porcelain should include staged record"
 assert_contains $'inspect\tsnapshot_id='"${snapshot_id}"$'\trepo=.\tcategory=unstaged' "${inspect_porcelain_output}" "inspect porcelain should include unstaged record"
 assert_contains $'inspect\tsnapshot_id='"${snapshot_id}"$'\trepo=.\tcategory=untracked' "${inspect_porcelain_output}" "inspect porcelain should include untracked record"
-assert_contains $'inspect_file\trepo=.\tcategory=untracked\tfile=root-untracked-1.txt' "${inspect_porcelain_output}" "inspect porcelain should include untracked file entry"
+assert_contains $'inspect_file\tsnapshot_id='"${snapshot_id}"$'\trepo=.\tcategory=untracked\tfile=root-untracked-1.txt' "${inspect_porcelain_output}" "inspect porcelain should include untracked file entry"
 
 # Build a clean snapshot for restore-check readiness checks.
 git -C "${root_repo}" reset --hard >/dev/null

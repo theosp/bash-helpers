@@ -92,7 +92,7 @@
     - compare rows are cached per GUI session; changing focused files does not rerun compare
     - refresh action reruns compare and resets GUI-side file-diff cache
     - first-time per-file preview fetch shows a loading indicator while diff is prepared
-    - external diff tool order: `meld`, then `opendiff`, then `code --diff`
+    - external diff tool order: `meld`, then `kdiff3`, then `opendiff`, then `bcompare`, then `code` (`code` launches as `code --diff`)
     - external launch order is fixed as snapshot-left/current-right:
       `meld "<snapshot_tmp_file>" "<current_file>"`
   - Default compare is diagnostic and exits `0` on successful execution.

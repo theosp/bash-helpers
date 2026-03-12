@@ -204,11 +204,24 @@ Render mode flags (mutually exclusive):
 - `--name-only` (default: off)
 - `--stat` (default: on)
 - `--diff` (default: off)
+- `--gui` launches the shared browser UI
 
 Other flags:
 - `--repo <rel_path>`
 - `--all-repos` (default: off; include clean repos in summary)
 - `--porcelain`
+
+Porcelain rows:
+- `inspect_target`: selected scope/summary row with `contract_version=2`
+- `inspect_repo`: one row per repo with relation/apply-check/collision counters
+- `inspect`: one row per selected category with captured file totals
+- `inspect_file`: one row per captured file
+
+GUI notes:
+- `inspect --gui` cannot be combined with `--porcelain`
+- `inspect --gui` ignores `--name-only`, `--stat`, and `--diff`
+- inspect mode is read-only: it previews captured staged/unstaged patch blocks and captured untracked file contents
+- the browser shell includes a mode picker, snapshot picker, repo filter, category toggles, and an `all repos` toggle for clean-repo summaries
 
 ### `git-snapshot restore-check <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]`
 
@@ -246,23 +259,32 @@ Default behavior:
 
 Use `--all` to include resolved rows.
 Use `--diff` to include inline unified diffs for `unresolved_diverged` rows.
-Use `--gui` to launch a visual compare browser (Node-based local web UI) with per-file diff preview and external patching via Meld/FileMerge/VS Code.
+Use `--gui` to launch the shared browser shell in compare mode (Node-based local web UI) with per-file diff preview and external diff launching.
 `--gui` cannot be combined with `--porcelain`.
 If `--gui` and `--diff` are both passed, compare warns and ignores `--diff` (GUI renders per-file diffs internally).
 
 GUI notes:
-- Compare rows are loaded once and cached until you click Refresh.
-- Refresh reruns compare and resets the diff cache.
+- Compare/inspect state is controlled inside the browser UI via mode, snapshot, repo, and mode-specific toggles.
+- Control changes auto-refresh the active view; Refresh reruns the exact current state and resets cached previews.
+- Compare rows are cached per serialized view state.
 - Snapshot-side file is materialized on demand per selected file (no full snapshot tree reconstruction).
 - Runtime dependency is `node` (no Python/Tk dependency).
 - GUI opens in your default browser and runs from a local `127.0.0.1` server started by the command.
 - First-time diff fetch for a file shows a loading indicator while preview is prepared.
-- External diff launch order is snapshot-left/current-right (Meld contract):
-  - `meld "<snapshot_tmp_file>" "<current_file>"`
-- Tool fallback order for "Open in Meld":
+- Compare mode exposes external diff launch; inspect mode does not.
+- External diff launch order is snapshot-left/current-right.
+- Force a built-in selector with `GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_TOOL=<tool>`.
+- For a custom launch shape, set `GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_COMMAND_TEMPLATE='<command> ... $SOURCE ... $TARGET'`.
+- Override the auto-detect order with `GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_CANDIDATES=<tool1,tool2,...>`.
+- Candidate entries are selectors, not shell snippets. Canonical selectors are `meld`, `kdiff3`, `opendiff`, `bcompare`, and `code`.
+- Command templates are tokenized into argv entries with quote/backslash handling and placeholder substitution; they are not executed through a shell.
+- Use `$SOURCE` / `${SOURCE}` for the snapshot-side file and `$TARGET` / `${TARGET}` for the current working-tree file.
+- Default auto-detect order is:
   1. `meld`
-  2. `opendiff`
-  3. `code --diff`
+  2. `kdiff3`
+  3. `opendiff`
+  4. `bcompare`
+  5. `code` (launched as `code --diff`)
 
 Status model:
 - `resolved_committed`: snapshot target matches `HEAD` and current working tree
@@ -332,6 +354,7 @@ git-snapshot reset-all --snapshot --porcelain
 git-snapshot list --porcelain
 git-snapshot list --include-auto --porcelain
 git-snapshot inspect before-rebase --porcelain
+git-snapshot inspect before-rebase --gui
 git-snapshot restore-check before-rebase --porcelain
 ```
 

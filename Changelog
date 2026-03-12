@@ -7,6 +7,13 @@ FUTURE
   Node GUI for cached-row validation, inline load failures, responsive
   layout, and external diff launching.
 
+* Share the local browser UI across `git-snapshot compare --gui` and
+  `inspect --gui`:
+  - add inspect-mode snapshot summaries and preview browsing for captured
+    staged, unstaged, and untracked content
+  - keep external diff launching compare-only with configurable selector and
+    command-template overrides
+
 * Expose compare cache telemetry in human output so cold and warm runs are
   visible without using porcelain.
 
