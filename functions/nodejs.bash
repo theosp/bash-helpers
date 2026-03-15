@@ -19,6 +19,48 @@ ensureNvmExistsAndLoaded () {
   fi
 }
 
+useNodeJsVersion () {
+  ensureNvmExistsAndLoaded
+
+  local required_node_version="$1"
+
+  if [[ -z "$required_node_version" ]]; then
+      announceErrorAndExit "useNodeJsVersion requires a Node.js version argument"
+  fi
+
+  announceStep "Setting nvm to use node version: $required_node_version"
+  if nvm use "$required_node_version" > /dev/null; then
+      announceStep "Successfully switched to node version: $(node -v)"
+      return 0
+  fi
+
+  announceStep "Failed to switch to $required_node_version. Attempting to install..."
+  if nvm install "$required_node_version"; then
+      announceStep "Successfully installed $required_node_version. Switching to it..."
+      nvm use "$required_node_version" > /dev/null || \
+          announceErrorAndExit "Failed to switch to $required_node_version after installation"
+      announceStep "Successfully switched to node version: $(node -v)"
+  else
+      announceErrorAndExit "Failed to install $required_node_version"
+  fi
+}
+
+useNodeJsVersionFromNvmrc () {
+  local nvmrc_path="${1:-"${MAIN_DIR:-.}/.nvmrc"}"
+  local required_node_version
+
+  if [[ ! -f "$nvmrc_path" ]]; then
+      announceErrorAndExit "Missing .nvmrc file: $nvmrc_path"
+  fi
+
+  required_node_version="$(tr -d '\r\n[:space:]' < "$nvmrc_path")"
+  if [[ -z "$required_node_version" ]]; then
+      announceErrorAndExit ".nvmrc file is empty: $nvmrc_path"
+  fi
+
+  useNodeJsVersion "$required_node_version"
+}
+
 requireNodeJsVersion () {
   ensureNvmExistsAndLoaded
 
@@ -26,20 +68,6 @@ requireNodeJsVersion () {
   node_version="$(node -v)"
   required_node_version="$1"
   if isVersionHigher "$node_version" "$required_node_version"; then
-      announceStep "Setting nvm to use node version: $required_node_version"
-      nvm use "$required_node_version"
-      announceStep "Successfully switched to node version: $required_node_version"
-      if [[ "$?" != 0 ]]; then
-          announceStep "Failed to switch to $required_node_version. Attempting to install..."
-          nvm install "$required_node_version"
-
-          if [[ "$?" == 0 ]]; then
-              announceStep "Successfully installed $required_node_version. Switching to it..."
-              nvm use "$required_node_version"
-          else
-              announceStep "Failed to install $required_node_version. Exiting..."
-              exit 1
-          fi
-      fi
+      useNodeJsVersion "$required_node_version"
   fi
 }
