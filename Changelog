@@ -1,5 +1,13 @@
 FUTURE
 
+* Pin `git-snapshot` GUI/UI-test Node runtime to `22.22.0` via the repo
+  `.nvmrc`:
+  - add a shared runtime selector that accepts the pinned Node already on
+    `PATH` and auto-selects it via `nvm` when needed
+  - make `compare --gui` / `inspect --gui` self-select the pinned Node version
+  - align GUI shell coverage and Playwright UI tests with the same runtime
+    contract.
+
 v1.0.38 (2026-03-12)
 
 * Stream `compare --gui` launcher output live while preserving clean crash

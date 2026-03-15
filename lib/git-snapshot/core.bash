@@ -3589,8 +3589,7 @@ _git_snapshot_launch_gui() {
     return 1
   fi
 
-  if ! command -v node >/dev/null 2>&1; then
-    _git_snapshot_ui_err "node is required for ${mode} --gui."
+  if ! git_snapshot_node_runtime_use "_git_snapshot_ui_err"; then
     return 1
   fi
 

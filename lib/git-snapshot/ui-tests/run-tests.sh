@@ -17,12 +17,15 @@ RUN_TESTS_CACHE_FILE="${SCRIPT_DIR}/.run-tests.cache"
 RUN_TESTS_CACHE_VERSION="1"
 RUN_TESTS_CACHE_KEY_MANUAL_LAST_CATEGORY="manual.last_category"
 HOST_HOME="${HOME}"
-NODE_VERSION="20"
+NODE_VERSION=""
 ACTIVE_RUNTIME_DIR=""
 ACTIVE_RUN_MODE="automated"
 TEST_CATEGORIES=()
 TEST_CATEGORY_DESCRIPTIONS=()
 MANUAL_CATEGORY_SELECTION=""
+
+# shellcheck source=/dev/null
+source "${SCRIPT_DIR}/../node-runtime.bash"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -53,6 +56,8 @@ print_error() {
   printf "%b\n" "${RED}$1${NC}" >&2
 }
 
+NODE_VERSION="$(git_snapshot_node_runtime_version print_error)"
+
 is_truthy_value() {
   local raw="$1"
   case "$(printf "%s" "${raw}" | tr '[:upper:]' '[:lower:]')" in
@@ -65,24 +70,18 @@ is_truthy_value() {
   esac
 }
 
-use_node20() {
-  export NVM_DIR="${HOST_HOME}/.nvm"
-
-  if [[ ! -f "${NVM_DIR}/nvm.sh" ]]; then
-    print_error "Missing ${NVM_DIR}/nvm.sh. Install nvm/node ${NODE_VERSION} first."
-    return 1
+use_pinned_node() {
+  if [[ -z "${NVM_DIR:-}" ]]; then
+    export NVM_DIR="${HOST_HOME}/.nvm"
   fi
 
-  # shellcheck source=/dev/null
-  source "${NVM_DIR}/nvm.sh"
-  if ! nvm use "${NODE_VERSION}" >/dev/null; then
-    print_error "Unable to select node ${NODE_VERSION} via nvm."
+  if ! git_snapshot_node_runtime_use print_error; then
     return 1
   fi
 }
 
 setup_node() {
-  use_node20
+  use_pinned_node
   printf "Node:   %s\n" "$(node -v 2>/dev/null || echo "not found")"
 }
 
@@ -590,7 +589,7 @@ run_category_tests() {
   set +e
   (
     cd "${SCRIPT_DIR}"
-    use_node20
+    use_pinned_node
     HOME="${HOST_HOME}" \
     PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH}" \
     ./node_modules/.bin/playwright test "${playwright_args[@]}"

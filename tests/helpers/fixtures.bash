@@ -5,6 +5,7 @@ set -euo pipefail
 TEST_HELPERS_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 BASH_HELPERS_ROOT="$(cd "${TEST_HELPERS_DIR}/../.." && pwd -P)"
 GIT_SNAPSHOT_BIN="${BASH_HELPERS_ROOT}/bin/git-snapshot"
+GIT_SNAPSHOT_TEST_HOST_NVM_DIR="${NVM_DIR:-${HOME}/.nvm}"
 
 git_snapshot_test_setup_sandbox() {
   TEST_SANDBOX="$(mktemp -d "${TMPDIR:-/tmp}/git-snapshot-test.XXXXXX")"
@@ -35,6 +36,7 @@ git_snapshot_test_cmd() {
   fi
 
   HOME="${TEST_HOME}" \
+  NVM_DIR="${NVM_DIR:-${GIT_SNAPSHOT_TEST_HOST_NVM_DIR}}" \
   GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX="${GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX}" \
   "${GIT_SNAPSHOT_BIN}" "$@"
 }

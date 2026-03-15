@@ -268,7 +268,10 @@ GUI notes:
 - Control changes auto-refresh the active view; Refresh reruns the exact current state and resets cached previews.
 - Compare rows are cached per serialized view state.
 - Snapshot-side file is materialized on demand per selected file (no full snapshot tree reconstruction).
-- Runtime dependency is `node` (no Python/Tk dependency).
+- Runtime is pinned to Node `22.22.0` via the repo `.nvmrc`.
+- If `node -v` already resolves to `22.22.0`, `compare --gui`, `inspect --gui`, and the Playwright UI suite use it directly.
+- Otherwise the commands auto-select the pinned runtime via `nvm` (override `nvm` location with `NVM_DIR` when needed).
+- Install the pinned runtime with `nvm install 22.22.0` if your active `node` does not already match the pin.
 - GUI opens in your default browser and runs from a local `127.0.0.1` server started by the command.
 - First-time diff fetch for a file shows a loading indicator while preview is prepared.
 - Compare mode exposes external diff launch; inspect mode does not.

@@ -2,9 +2,10 @@
 
 ## Prerequisites
 
-1. Node.js 20 via `nvm`
+1. Node.js 22.22.0 available either on `PATH` or via `nvm`
    ```bash
-   nvm use 20
+   node -v
+   nvm install 22.22.0
    ```
 2. Playwright Chromium
    ```bash
@@ -75,6 +76,7 @@ lib/git-snapshot/ui-tests/
 ## Notes
 
 - The runner mirrors the `txtd-server` category-based Playwright flow.
+- The runner accepts a matching `node` already on `PATH`, and otherwise auto-selects the pinned runtime from the repo `.nvmrc` via `nvm`.
 - Category setup happens in `prepare-env.bash`, which builds a real shared `git-snapshot` GUI fixture (launched via `compare --gui`) and exports the GUI URL for Playwright.
 - When a category defines `prepare-env.bash`, category-level runs prepare an isolated fixture per spec so `./run-tests.sh general-ui` and `./run-tests.sh general-ui 02` use matching setup semantics.
 - Automated `01` coverage exercises the explicit external diff command-template override with `$SOURCE` / `$TARGET` placeholders so unusual launch shapes stay supported without opening a real app.

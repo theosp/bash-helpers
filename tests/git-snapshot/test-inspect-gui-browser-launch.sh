@@ -136,6 +136,7 @@ assert_eq "gui-inspect-browser-launch" "${snapshot_id}" "inspect browser launch 
   cd "${root_repo}"
   exec env \
     HOME="${TEST_HOME}" \
+    NVM_DIR="${GIT_SNAPSHOT_TEST_HOST_NVM_DIR}" \
     GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX="${GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX}" \
     PATH="${fake_bin_dir}:${PATH}" \
     GIT_SNAPSHOT_GUI_STREAM_OUTPUT=1 \
