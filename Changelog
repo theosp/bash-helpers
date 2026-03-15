@@ -1,5 +1,7 @@
 FUTURE
 
+v1.0.39 (2026-03-15)
+
 * Pin `git-snapshot` GUI/UI-test Node runtime to `22.22.0` via the repo
   `.nvmrc`:
   - add a shared runtime selector that accepts the pinned Node already on
