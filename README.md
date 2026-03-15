@@ -53,6 +53,9 @@ git-snapshot rename before-rebase before-rebase-capability-gating
 # 2) Inspect what was captured
 git-snapshot inspect before-rebase-capability-gating
 
+# Optional: open the shared compare UI
+git-snapshot gui before-rebase-capability-gating
+
 # 3) Check restore readiness vs current tree
 git-snapshot restore-check before-rebase-capability-gating --files
 
@@ -245,6 +248,16 @@ Exit codes:
 `--files` includes captured file inventories and collision file details (implies `--details`).
 `--all-repos` includes clean repos in summary output.
 
+### `git-snapshot gui [snapshot_id]`
+
+Opens the shared browser UI in compare mode.
+
+- No args: open the compare UI for the latest user-created snapshot.
+- `<snapshot_id>`: open the compare UI for that snapshot.
+- `git-snapshot gui` accepts only an optional `snapshot_id`.
+- Use `git-snapshot compare --gui` when you need pre-launch compare flags such as `--repo`, `--all`, `--diff`, or `--porcelain`.
+- Once open, the browser UI can switch between compare and inspect modes.
+
 ### `git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--gui] [--porcelain]`
 
 Compares current progress against snapshot-captured work items.
@@ -259,7 +272,8 @@ Default behavior:
 
 Use `--all` to include resolved rows.
 Use `--diff` to include inline unified diffs for `unresolved_diverged` rows.
-Use `--gui` to launch the shared browser shell in compare mode (Node-based local web UI) with per-file diff preview and external diff launching.
+Use `git-snapshot gui [snapshot_id]` as the shortcut to open the shared browser shell in compare mode.
+Use `--gui` to launch the shared browser shell in compare mode (Node-based local web UI) with per-file diff preview and external diff launching when you need compare-specific pre-launch flags.
 `--gui` cannot be combined with `--porcelain`.
 If `--gui` and `--diff` are both passed, compare warns and ignores `--diff` (GUI renders per-file diffs internally).
 

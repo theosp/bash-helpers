@@ -32,6 +32,7 @@ Usage
   git-snapshot list [--include-auto] [--porcelain]
   git-snapshot inspect <snapshot_id> [--repo <rel_path>] [--staged|--unstaged|--untracked|--all] [--all-repos] [--name-only|--stat|--diff] [--gui] [--porcelain]
   git-snapshot restore-check <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]
+  git-snapshot gui [snapshot_id]
   git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--gui] [--porcelain]
   git-snapshot restore <snapshot_id> [--on-conflict <reject|rollback>] [--porcelain]
   git-snapshot delete <snapshot_id>
@@ -149,6 +150,16 @@ restore-check
   - 3 : compatibility issues found
   - 1 : usage/runtime error
 
+gui [snapshot_id]
+  Opens the shared browser UI in compare mode.
+  Accepted arguments:
+  - no args        : open compare UI for the latest user-created snapshot
+  - `snapshot_id`  : open compare UI for the selected snapshot
+  Notes:
+  - initial mode is compare, but the browser UI can switch between compare and inspect
+  - repo/visibility selection happens inside the browser UI
+  - for pre-launch compare flags such as `--repo`, `--all`, `--diff`, or `--porcelain`, use `git-snapshot compare --gui`
+
 compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--gui] [--porcelain]
   Compares current workspace progress against snapshot-captured work items.
   Default compare scope:
@@ -260,6 +271,7 @@ Deep inspection:
   git-snapshot restore-check before-rebase --details
   git-snapshot restore-check before-rebase --files
   git-snapshot restore-check before-rebase --porcelain
+  git-snapshot gui before-rebase
   git-snapshot compare before-rebase
   git-snapshot compare before-rebase --all
   git-snapshot compare before-rebase --diff
@@ -3758,6 +3770,41 @@ _git_snapshot_cmd_compare() {
     "${show_all}" \
     "${show_diff}"
 }
+
+_git_snapshot_cmd_gui() {
+  local root_repo="$1"
+  shift
+
+  local snapshot_id=""
+
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      -*)
+        _git_snapshot_ui_err "git-snapshot gui accepts only an optional snapshot_id."
+        _git_snapshot_ui_err "Use git-snapshot compare --gui for --repo, --all, --diff, or --porcelain."
+        return 1
+        ;;
+      *)
+        if [[ -z "${snapshot_id}" ]]; then
+          snapshot_id="$1"
+        else
+          _git_snapshot_ui_err "Unexpected argument for gui: $1"
+          _git_snapshot_ui_err "git-snapshot gui accepts only an optional snapshot_id."
+          _git_snapshot_ui_err "Use git-snapshot compare --gui for --repo, --all, --diff, or --porcelain."
+          return 1
+        fi
+        ;;
+    esac
+    shift
+  done
+
+  if [[ -n "${snapshot_id}" ]]; then
+    _git_snapshot_cmd_compare "${root_repo}" "${snapshot_id}" --gui
+    return $?
+  fi
+
+  _git_snapshot_cmd_compare "${root_repo}" --gui
+}
 _git_snapshot_cmd_restore() {
   local root_repo="$1"
   shift
@@ -3870,6 +3917,9 @@ git_snapshot_main() {
       ;;
     restore-check)
       _git_snapshot_cmd_restore_check "${root_repo}" "$@"
+      ;;
+    gui)
+      _git_snapshot_cmd_gui "${root_repo}" "$@"
       ;;
     compare)
       _git_snapshot_cmd_compare "${root_repo}" "$@"

@@ -1,5 +1,15 @@
 FUTURE
 
+v1.0.41 (2026-03-15)
+
+* Add `git-snapshot gui` as a first-class shortcut for opening the shared
+  browser UI in compare mode:
+  - accepts no args or a single `snapshot_id`
+  - keeps `compare --gui` as the advanced path for pre-launch flags such as
+    `--repo`, `--all`, `--diff`, and `--porcelain`
+  - add CLI help, README guidance, and shell coverage for the shortcut
+    contract.
+
 v1.0.40 (2026-03-15)
 
 * Add reusable `nvm`-based Node.js version selectors for bash helpers:
