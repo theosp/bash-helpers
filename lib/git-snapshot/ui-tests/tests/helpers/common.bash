@@ -201,6 +201,7 @@ git_snapshot_ui_prepare_general_ui_suite() {
   local run_mode="${3:-automated}"
   local repo=""
   local clean_sub_repo=""
+  local missing_sub_repo=""
   local create_output=""
   local older_create_output=""
   local snapshot_id=""
@@ -216,6 +217,9 @@ git_snapshot_ui_prepare_general_ui_suite() {
   local allow_real_external_diff="${GIT_SNAPSHOT_UI_TESTS_ALLOW_REAL_EXTERNAL_DIFF:-0}"
   local malicious_branch=""
   local trailing_space_path=""
+  local clean_sub_snapshot_sha=""
+  local clean_sub_advanced_sha=""
+  local clean_sub_advance_count=24
   local i=0
 
   mkdir -p "${runtime_dir}"
@@ -227,9 +231,14 @@ git_snapshot_ui_prepare_general_ui_suite() {
 
   repo="${TEST_REPOS_ROOT}/gui-scroll"
   clean_sub_repo="${TEST_REPOS_ROOT}/gui-scroll-clean-sub"
+  missing_sub_repo="${TEST_REPOS_ROOT}/gui-scroll-missing-sub"
 
   git_snapshot_test_init_repo "${clean_sub_repo}"
   git_snapshot_test_commit_file "${clean_sub_repo}" "clean-sub.txt" "clean-sub-base" "init clean submodule"
+  if [[ "${selected_test}" == "08" ]]; then
+    git_snapshot_test_init_repo "${missing_sub_repo}"
+    git_snapshot_test_commit_file "${missing_sub_repo}" "missing-sub.txt" "missing-sub-base" "init missing submodule"
+  fi
 
   git_snapshot_test_init_repo "${repo}"
 
@@ -243,7 +252,10 @@ git_snapshot_ui_prepare_general_ui_suite() {
   git -C "${repo}" add .
   git -C "${repo}" commit -m "seed gui scroll fixture" >/dev/null
   git -C "${repo}" -c protocol.file.allow=always submodule add "${clean_sub_repo}" "modules/clean-sub" >/dev/null
-  git -C "${repo}" commit -am "add clean submodule" >/dev/null
+  if [[ "${selected_test}" == "08" ]]; then
+    git -C "${repo}" -c protocol.file.allow=always submodule add "${missing_sub_repo}" "modules/missing-sub" >/dev/null
+  fi
+  git -C "${repo}" commit -am "add gui scroll submodules" >/dev/null
 
   printf "older snapshot line\n" >> "${repo}/older-only.txt"
   git -C "${repo}" add older-only.txt
@@ -265,6 +277,11 @@ git_snapshot_ui_prepare_general_ui_suite() {
   } > "${repo}/inspect-untracked.txt"
   if [[ "${selected_test}" == "05" ]]; then
     printf "captured dash-prefixed untracked line\n" > "${repo}/--inspect-untracked.txt"
+  elif [[ "${selected_test}" == "08" ]]; then
+    {
+      printf "captured missing line 1\n"
+      printf "captured missing line 2\n"
+    } > "${repo}/missing-preview.txt"
   elif [[ "${selected_test}" == "07" ]]; then
     trailing_space_path="trailing-space.txt "
     printf "captured trailing-space payload\n" > "${repo}/${trailing_space_path}"
@@ -272,9 +289,21 @@ git_snapshot_ui_prepare_general_ui_suite() {
   for i in $(seq -w 1 140); do
     printf "snapshot row %s\n" "${i}" >> "${repo}/row-${i}.txt"
   done
+  if [[ "${selected_test}" == "08" ]]; then
+    printf "clean submodule snapshot\n" >> "${clean_sub_repo}/clean-sub.txt"
+    git -C "${clean_sub_repo}" add clean-sub.txt
+    git -C "${clean_sub_repo}" commit -m "snapshot clean submodule" >/dev/null
+    clean_sub_snapshot_sha="$(git -C "${clean_sub_repo}" rev-parse HEAD)"
+    git -C "${repo}/modules/clean-sub" fetch >/dev/null
+    git -C "${repo}/modules/clean-sub" checkout "${clean_sub_snapshot_sha}" >/dev/null 2>&1
+    printf "missing repo snapshot\n" >> "${repo}/modules/missing-sub/missing-sub.txt"
+  fi
   (
     cd "${repo}"
     git add 000-scroll-target.txt inspect-staged.txt row-*.txt
+    if [[ "${selected_test}" == "08" ]]; then
+      git add missing-preview.txt
+    fi
   )
 
   create_output="$(cd "${repo}" && git_snapshot_test_cmd create gui-scroll-playwright)"
@@ -286,6 +315,19 @@ git_snapshot_ui_prepare_general_ui_suite() {
   for i in $(seq 1 240); do
     printf "diverged line %03d\n" "${i}" >> "${repo}/000-scroll-target.txt"
   done
+
+  if [[ "${selected_test}" == "08" ]]; then
+    rm -f "${repo}/missing-preview.txt"
+    rm -rf "${repo}/modules/missing-sub"
+    for i in $(seq 1 "${clean_sub_advance_count}"); do
+      printf "clean submodule advanced %02d\n" "${i}" >> "${clean_sub_repo}/clean-sub.txt"
+      git -C "${clean_sub_repo}" add clean-sub.txt
+      git -C "${clean_sub_repo}" commit -m "advance clean submodule ${i}" >/dev/null
+    done
+    clean_sub_advanced_sha="$(git -C "${clean_sub_repo}" rev-parse HEAD)"
+    git -C "${repo}/modules/clean-sub" fetch >/dev/null
+    git -C "${repo}/modules/clean-sub" checkout "${clean_sub_advanced_sha}" >/dev/null 2>&1
+  fi
 
   if [[ "${selected_test}" == "05" ]]; then
     malicious_branch='inspect-<svg/onload=window.__inspectSummaryXss=1>'
@@ -409,6 +451,10 @@ git_snapshot_ui_prepare_general_ui_suite() {
     GIT_SNAPSHOT_UI_TEST_OLDER_SNAPSHOT_ID "${older_snapshot_id}" \
     GIT_SNAPSHOT_UI_TEST_MALICIOUS_BRANCH "${malicious_branch}" \
     GIT_SNAPSHOT_UI_TEST_TRAILING_SPACE_PATH "${trailing_space_path}" \
+    GIT_SNAPSHOT_UI_TEST_MISSING_REPO_REL "modules/missing-sub" \
+    GIT_SNAPSHOT_UI_TEST_MISSING_REPO_FILE "missing-sub.txt" \
+    GIT_SNAPSHOT_UI_TEST_MISSING_REPO_ABS "${repo}/modules/missing-sub" \
+    GIT_SNAPSHOT_UI_TEST_CLEAN_SUB_ADVANCE_COUNT "${clean_sub_advance_count}" \
     GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_TOOL "${external_diff_tool}" \
     GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_LOG "${external_diff_log}" \
     GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_SPAWN_LOG "${external_diff_spawn_log}" \

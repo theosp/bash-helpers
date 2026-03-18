@@ -287,12 +287,14 @@ GUI notes:
 - Otherwise the commands auto-select the pinned runtime via `nvm` (override `nvm` location with `NVM_DIR` when needed).
 - Install the pinned runtime with `nvm install 22.22.0` if your active `node` does not already match the pin.
 - GUI opens in your default browser and runs from a local `127.0.0.1` server started by the command.
+- The GUI server prefers `127.0.0.1:34757` and then tries the next ports in order when that port is occupied.
 - First-time diff fetch for a file shows a loading indicator while preview is prepared.
 - Compare mode exposes external diff launch; inspect mode does not.
 - External diff launch order is snapshot-left/current-right.
 - Force a built-in selector with `GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_TOOL=<tool>`.
 - For a custom launch shape, set `GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_COMMAND_TEMPLATE='<command> ... $SOURCE ... $TARGET'`.
 - Override the auto-detect order with `GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_CANDIDATES=<tool1,tool2,...>`.
+- Override the preferred server port policy with `GIT_SNAPSHOT_GUI_PORT_START=<port>` and `GIT_SNAPSHOT_GUI_PORT_COUNT=<n>`.
 - Candidate entries are selectors, not shell snippets. Canonical selectors are `meld`, `kdiff3`, `opendiff`, `bcompare`, and `code`.
 - Command templates are tokenized into argv entries with quote/backslash handling and placeholder substitution; they are not executed through a shell.
 - Use `$SOURCE` / `${SOURCE}` for the snapshot-side file and `$TARGET` / `${TARGET}` for the current working-tree file.

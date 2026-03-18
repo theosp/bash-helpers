@@ -36,6 +36,8 @@ assert_contains "git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] 
 assert_contains "GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_TOOL=<tool>" "${help_output}" "help should document forced external diff selector override"
 assert_contains "GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_COMMAND_TEMPLATE='<command> ... \$SOURCE ... \$TARGET'" "${help_output}" "help should document explicit external diff command templates"
 assert_contains "GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_CANDIDATES=<tool1,tool2,...>" "${help_output}" "help should document auto-detect selector override"
+assert_contains "GIT_SNAPSHOT_GUI_PORT_START=<port>" "${help_output}" "help should document preferred GUI port start override"
+assert_contains "GIT_SNAPSHOT_GUI_PORT_COUNT=<n>" "${help_output}" "help should document preferred GUI port count override"
 assert_contains "Canonical selectors: \`meld\`, \`kdiff3\`, \`opendiff\`, \`bcompare\`, \`code\`" "${help_output}" "help should document canonical external diff selectors"
 assert_contains "command templates are tokenized into argv entries with quote/backslash handling; they are not shell-evaluated" "${help_output}" "help should clarify command template tokenization semantics"
 assert_contains "use \`\$SOURCE\` / \`\${SOURCE}\` for the snapshot-side file and \`\$TARGET\` / \`\${TARGET}\` for the current working-tree file" "${help_output}" "help should document command template placeholders"

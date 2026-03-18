@@ -188,6 +188,8 @@ compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--gui] [--porcelain]
   - `GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_TOOL=<tool>` : force a built-in selector
   - `GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_COMMAND_TEMPLATE='<command> ... $SOURCE ... $TARGET'` : force an explicit launch template
   - `GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_CANDIDATES=<tool1,tool2,...>` : override auto-detect selector order
+  - `GIT_SNAPSHOT_GUI_PORT_START=<port>` : first loopback port to try for the shared browser server (default: `34757`)
+  - `GIT_SNAPSHOT_GUI_PORT_COUNT=<n>` : number of sequential loopback ports to try before failing (default: `32`)
   - Canonical selectors: `meld`, `kdiff3`, `opendiff`, `bcompare`, `code`
   - command templates are tokenized into argv entries with quote/backslash handling; they are not shell-evaluated
   - use `$SOURCE` / `${SOURCE}` for the snapshot-side file and `$TARGET` / `${TARGET}` for the current working-tree file

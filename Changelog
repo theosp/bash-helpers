@@ -1,5 +1,35 @@
 FUTURE
 
+v1.0.42 (2026-03-18)
+
+* Refresh the shared `git-snapshot` browser UI diff preview with GitHub-style
+  line gutters/colors and add a draggable, persisted navigator/diff split
+  layout.
+
+* Compact the shared browser header so controls stay on a single toolbar row
+  and move snapshot context/counts into a sticky navigator summary header.
+
+* Keep the shared browser view state in the URL so compare/inspect presets
+  survive reloads with the same snapshot, repo filter, and toggle selections.
+
+* Make the shared browser tab title reflect the current compare/inspect state
+  so snapshot and filter context stays visible outside the page body.
+
+* Render compare row statuses as pill-style tags with native tooltip
+  explanations for resolved and unresolved snapshot states.
+
+* Add an in-diff legend beside the hunk count so shared browser previews make
+  it explicit that green `+` lines are snapshot additions/restores and red `-`
+  lines are current-tree content the snapshot removes.
+
+* Make the shared browser diff legend contextual so compare previews explain
+  snapshot restore/remove direction per row state and inspect previews label
+  staged versus unstaged captured patch changes differently.
+
+* Replace raw compare-GUI submodule read errors with a dedicated submodule
+  summary card that shows snapshot/current/HEAD gitlink commits, relation, and
+  short commit-subject ranges when the local checkout has the commit objects.
+
 v1.0.41 (2026-03-15)
 
 * Add `git-snapshot gui` as a first-class shortcut for opening the shared
