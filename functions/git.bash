@@ -1,5 +1,27 @@
 #!/usr/bin/env bash
 
+gitGetRestoreRef () {
+    local rep_path="$1"
+
+    git -C "$rep_path" symbolic-ref --quiet --short HEAD 2>/dev/null || \
+        git -C "$rep_path" rev-parse --verify HEAD
+}
+
+gitCheckoutRefRec () {
+    local rep_path="$1"
+    local target_ref="$2"
+
+    announceMainStep "Checkout ${target_ref} of ${rep_path}"
+
+    pushd .
+
+    cd "$rep_path"
+    git checkout "$target_ref"
+    git submodule update --init --recursive
+
+    popd
+}
+
 gitCheckoutMasterRec () {
     rep_path="$1"
     reset_to_origin_origin_master="$2"

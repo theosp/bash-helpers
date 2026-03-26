@@ -4,6 +4,18 @@ expandPath () {
     platformReadlink -f "$@"
 }
 
+expandUserPath () {
+    local path="${1:-}"
+
+    if [[ "$path" == "~/"* ]]; then
+        printf "%s/%s\n" "$HOME" "${path#"~/"}"
+    elif [[ "$path" == "~" ]]; then
+        printf "%s\n" "$HOME"
+    else
+        printf "%s\n" "$path"
+    fi
+}
+
 isRelativePath () {
     local path="$1"
 
