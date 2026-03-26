@@ -1,5 +1,14 @@
 FUTURE
 
+v1.0.43 (2026-03-26)
+
+* Add reusable helper utilities for build and launcher workflows:
+  - `gitGetRestoreRef` captures either the current branch or detached-HEAD
+    SHA
+  - `gitCheckoutRefRec` restores a repo to a specific ref and refreshes
+    submodules
+  - `expandUserPath` expands `~` and `~/...` inputs for path-based helpers
+
 v1.0.42 (2026-03-18)
 
 * Refresh the shared `git-snapshot` browser UI diff preview with GitHub-style
