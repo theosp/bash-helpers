@@ -1,5 +1,15 @@
 FUTURE
 
+Helper Utilities:
+
+* Add physical-base path helpers for bash-helpers:
+  - `resolvePathAgainstPhysicalBaseDir` resolves relative paths from a
+    physical base directory and preserves unresolved descendants
+  - `pathIsWithinRoot` verifies that resolved paths stay inside a root
+  - `pathBasenameHasDelimitedToken` and
+    `pathBasenameHasAnyDelimitedToken` match hyphen/underscore-delimited
+    basename tokens
+
 v1.0.43 (2026-03-26)
 
 * Add reusable helper utilities for build and launcher workflows:
