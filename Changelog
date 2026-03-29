@@ -10,6 +10,12 @@ Helper Utilities:
     `pathBasenameHasAnyDelimitedToken` match hyphen/underscore-delimited
     basename tokens
 
+Testing Infrastructure:
+
+* Run top-level `tests/test-*.sh` before the existing `git-snapshot` suite,
+  add direct coverage for the runner contract, and document the full
+  `bash-helpers` test entrypoint.
+
 v1.0.43 (2026-03-26)
 
 * Add reusable helper utilities for build and launcher workflows:

@@ -446,19 +446,21 @@ This bypasses interactive confirmation for `git-snapshot create --clear`.
 
 ## Tests
 
-Run all git-snapshot tests (CI entrypoint):
+Run the full `bash-helpers` test entrypoint:
 
 ```bash
 ./tests/run-tests.sh
 ```
 
-Equivalent direct runner:
+This runs any top-level `tests/test-*.sh` scripts first, then the git-snapshot suite.
+
+Run only the git-snapshot suite directly:
 
 ```bash
 ./tests/git-snapshot/run-all.sh
 ```
 
-Optional performance smoke benchmark:
+Optional performance smoke benchmark for the git-snapshot portion of the suite:
 
 ```bash
 GIT_SNAPSHOT_INCLUDE_PERF_SMOKE=true ./tests/run-tests.sh
