@@ -1,20 +1,13 @@
 FUTURE
 
-Helper Utilities:
+v1.0.44 (2026-03-29)
 
-* Add physical-base path helpers for bash-helpers:
-  - `resolvePathAgainstPhysicalBaseDir` resolves relative paths from a
-    physical base directory and preserves unresolved descendants
-  - `pathIsWithinRoot` verifies that resolved paths stay inside a root
-  - `pathBasenameHasDelimitedToken` and
-    `pathBasenameHasAnyDelimitedToken` match hyphen/underscore-delimited
-    basename tokens
+* Add physical-base path helper utilities for root containment,
+  symlink-aware path resolution, and delimited basename token matching.
 
-Testing Infrastructure:
-
-* Run top-level `tests/test-*.sh` before the existing `git-snapshot` suite,
-  add direct coverage for the runner contract, and document the full
-  `bash-helpers` test entrypoint.
+* Run top-level `bash-helpers` tests before the `git-snapshot` suite, add
+  direct coverage for the runner contract, and document the full test
+  entrypoint.
 
 v1.0.43 (2026-03-26)
 
