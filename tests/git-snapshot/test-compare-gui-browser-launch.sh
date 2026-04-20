@@ -189,7 +189,7 @@ start_gui_compare() {
       GIT_SNAPSHOT_GUI_NO_BROWSER="${no_browser}" \
       GIT_SNAPSHOT_GUI_PORT_START="${gui_port_start}" \
       GIT_SNAPSHOT_GUI_PORT_COUNT="${gui_port_count}" \
-      "${GIT_SNAPSHOT_BIN}" compare "${snapshot_id}" --repo . --all --gui
+      "${GIT_SNAPSHOT_BIN}" compare "${snapshot_id}" --repo . --include-no-effect --gui
   ) > "${gui_log_file}" 2>&1 &
   gui_pid=$!
 
@@ -232,7 +232,7 @@ run_gui_compare_expect_failure() {
       GIT_SNAPSHOT_GUI_NO_BROWSER=1 \
       GIT_SNAPSHOT_GUI_PORT_START="${gui_port_start}" \
       GIT_SNAPSHOT_GUI_PORT_COUNT="${gui_port_count}" \
-      "${GIT_SNAPSHOT_BIN}" compare "${snapshot_id}" --repo . --all --gui
+      "${GIT_SNAPSHOT_BIN}" compare "${snapshot_id}" --repo . --include-no-effect --gui
   ) > "${gui_log_file}" 2>&1
   status=$?
   set -e

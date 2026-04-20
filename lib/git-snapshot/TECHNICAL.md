@@ -6,7 +6,7 @@ This document explains the three version markers that appear in `git-snapshot`.
 
 - `git_snapshot_meta_v4` is the only supported snapshot metadata format.
 - `engine=v3` is the current compare implementation label.
-- `contract_version=5` is the current `compare --porcelain` schema version.
+- `contract_version=8` is the current `compare --porcelain` schema version.
 - Older snapshot metadata formats are unsupported by design.
 
 ## The Three Version Markers
@@ -33,12 +33,12 @@ This is not a compatibility promise for older snapshots and not a legacy-support
 
 Change this only when compare internals change enough that results, caching behavior, or diagnostics should be attributed to a new compare implementation generation.
 
-### `contract_version=5`
+### `contract_version=8`
 
 This is the machine-readable schema version for `compare --porcelain`.
 
 Use it to answer:
-- Can an automation safely parse the emitted `compare_target`, `compare_file`, and `compare_summary` rows?
+- Can an automation safely parse the emitted `compare_target`, `compare_repo`, `compare_file`, and `compare_summary` rows?
 - Has the stable output contract changed?
 
 Change this only when the porcelain row schema changes in a way that affects consumers.
@@ -49,7 +49,7 @@ They track different concerns:
 
 - Storage compatibility: `git_snapshot_meta_v4`
 - Runtime implementation generation: `engine=v3`
-- Machine-readable output contract: `contract_version=5`
+- Machine-readable output contract: `contract_version=8`
 
 Keeping them separate avoids overloading one number to mean:
 - on-disk format compatibility
@@ -62,7 +62,7 @@ Those concerns evolve independently.
 
 - If snapshot files on disk change incompatibly, bump `git_snapshot_meta_v4`.
 - If compare internals materially change, bump `engine=v3`.
-- If porcelain output changes for consumers, bump `contract_version=5`.
+- If porcelain output changes for consumers, bump `contract_version=8`.
 
 Do not infer one bump from another. A compare-engine change does not imply a metadata-format change, and a metadata-format change does not imply a porcelain-contract change.
 

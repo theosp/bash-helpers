@@ -66,22 +66,23 @@
     - `3`: compatibility issues found
     - `1`: usage/runtime error
 
-- `git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--gui] [--porcelain]`
-  - Snapshot progress engine over snapshot-captured files only.
+- `git-snapshot compare [snapshot_id] [--repo <rel_path>] [--include-no-effect] [--diff] [--base <working-tree|snapshot>] [--gui] [--porcelain]`
+  - Restore-effect compare engine over current dirty root-scope paths plus snapshot-captured paths.
   - Optional `snapshot_id`:
     - when omitted, select latest `origin=user` snapshot from full shared-folder registry
       (all roots sharing the folder-name registry)
     - order: `created_at_epoch` descending, tie-break by snapshot id lexical descending
     - if no user-created snapshot exists: fail clearly
   - Status model per file:
-    - `resolved_committed`: snapshot target matches `HEAD` and current working tree
-    - `resolved_uncommitted`: snapshot target matches working tree but not `HEAD`
-    - `unresolved_missing`: snapshot target path is missing from working tree
-    - `unresolved_diverged`: current content or mode diverges from snapshot target
+    - `resolved_committed`: restore baseline matches `HEAD` and current working tree
+    - `resolved_uncommitted`: restore baseline matches working tree but not `HEAD`
+    - `unresolved_missing`: restore baseline path is missing from working tree
+    - `unresolved_diverged`: current content or mode diverges from restore baseline
   - Visibility policy:
-    - default: show unresolved rows only
-    - `--all`: show resolved and unresolved rows
-    - `--diff`: include unified diffs for `unresolved_diverged` rows (human output)
+    - default: show restore-effect rows only (`restore_effect=changes`)
+    - `--include-no-effect`: include rows where restore would not change the working tree
+    - `--diff`: include unified diffs for diverged textual restore-effect rows (human output)
+    - `--base <...>`: orient line stats and diff presentation to `working-tree` or `snapshot`
     - `--gui`: launch visual compare browser (file tree + diff preview + external diff action)
     - `--repo <root-folder-name>` normalizes to `--repo .`
     - `--gui` is incompatible with `--porcelain`
@@ -89,28 +90,31 @@
   - GUI tool behavior:
     - runtime dependency is `node` (no Python/Tk dependency)
     - launches a local browser UI served on `127.0.0.1` by the command process
-    - compare rows are cached per GUI session; changing focused files does not rerun compare
-    - refresh action reruns compare and resets GUI-side file-diff cache
+    - compare rows are cached per GUI session/view state; changing focused files does not rerun compare
+    - `Refresh` reloads the current compare view
     - first-time per-file preview fetch shows a loading indicator while diff is prepared
     - external diff tool order: `meld`, then `kdiff3`, then `opendiff`, then `bcompare`, then `code` (`code` launches as `code --diff`)
     - external launch order is fixed as snapshot-left/current-right:
       `meld "<snapshot_tmp_file>" "<current_file>"`
   - Default compare is diagnostic and exits `0` on successful execution.
   - Porcelain rows:
-    - `compare_target`: selected snapshot metadata (`selected_snapshot_id`,
-      `selection_mode`, `snapshot_origin`, `snapshot_root`, `current_root`, `show_all`, `show_diff`)
-    - `compare_file`: file-level status and reason (`status`, `reason`);
+    - `compare_target`: selected snapshot metadata plus actual `include_no_effect`, `show_diff`, and `compare_base`
+    - `compare_repo`: per-repo shown/effect totals, shown `+/-` totals, and hidden no-effect count
+    - `compare_file`: one shown file row with `restore_effect`,
+      base-oriented `lines_added` / `lines_removed`, simplified
+      `display_kind` / `display_label`, and richer machine fields
+      (`status`, `path_scope`, `reason`);
       `file` uses backslash escapes for `\`, tab, newline, and carriage return
-    - `compare_summary`: totals (`repos_checked`, `files_total`,
-      `resolved_committed`, `resolved_uncommitted`, `unresolved_missing`,
-      `unresolved_diverged`, `unresolved_total`, `shown_files`) + telemetry
-      (`engine=v3`, `elapsed_ms` wall-clock milliseconds, `cache_hit_repos`,
-      `cache_miss_repos`) + `contract_version=5`
+    - `compare_summary`: top-level shown/effect totals, shown `+/-` totals,
+      hidden no-effect totals, telemetry (`engine=v3`, `elapsed_ms`
+      wall-clock milliseconds, `cache_hit_repos`, `cache_miss_repos`) +
+      `contract_version=8`
   - Cache behavior:
     - snapshots use metadata-backed `engine=v3`
     - compare requires intact `git_snapshot_meta_v4` metadata and compare-target
       metadata; corrupt or unsupported snapshots fail instead of rebuilding
       compare inputs
+    - persistent compare cache is off by default; enable with `GIT_SNAPSHOT_COMPARE_CACHE=1`
   - Exit codes:
     - `0`: compare completed
     - `1`: usage/runtime error

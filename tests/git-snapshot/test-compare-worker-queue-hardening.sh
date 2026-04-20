@@ -9,6 +9,7 @@ source "${SCRIPT_DIR}/../helpers/assertions.bash"
 source "${SCRIPT_DIR}/../helpers/fixtures.bash"
 
 git_snapshot_test_setup_sandbox
+export GIT_SNAPSHOT_COMPARE_CACHE=1
 
 repo="${TEST_REPOS_ROOT}/worker-queue-hardening"
 git_snapshot_test_init_repo "${repo}"
@@ -38,17 +39,19 @@ mkdir -p "${shim_dir}"
 chmod +x "${shim_path}"
 
 set +e
-first_compare="$(cd "${repo}" && PATH="${shim_dir}:$PATH" git_snapshot_test_cmd compare "${snapshot_id}" --repo . --all --porcelain 2>&1)"
+first_compare="$(cd "${repo}" && PATH="${shim_dir}:$PATH" git_snapshot_test_cmd compare "${snapshot_id}" --repo . --include-no-effect --porcelain 2>&1)"
 first_compare_code=$?
 set -e
 assert_exit_code 0 "${first_compare_code}" "compare should not rely on mktemp -u for worker queue setup"
 assert_not_contains "mktemp -u is forbidden in this test" "${first_compare}" "compare should not invoke mktemp -u"
-assert_contains $'\tcache_hit_repos=0\tcache_miss_repos=1\tcontract_version=5' "${first_compare}" "first hardened compare should still populate compare cache telemetry"
+assert_contains $'\tcache_hit_repos=0\tcache_miss_repos=1\t' "${first_compare}" "first hardened compare should still populate compare cache telemetry"
+assert_contains $'\tcontract_version=8\t' "${first_compare}" "first hardened compare should expose the v8 compare contract"
 
 set +e
-second_compare="$(cd "${repo}" && PATH="${shim_dir}:$PATH" git_snapshot_test_cmd compare "${snapshot_id}" --repo . --all --porcelain 2>&1)"
+second_compare="$(cd "${repo}" && PATH="${shim_dir}:$PATH" git_snapshot_test_cmd compare "${snapshot_id}" --repo . --include-no-effect --porcelain 2>&1)"
 second_compare_code=$?
 set -e
 assert_exit_code 0 "${second_compare_code}" "repeat compare should still succeed when mktemp -u is blocked"
 assert_not_contains "mktemp -u is forbidden in this test" "${second_compare}" "repeat compare should not invoke mktemp -u"
-assert_contains $'\tcache_hit_repos=1\tcache_miss_repos=0\tcontract_version=5' "${second_compare}" "repeat hardened compare should still hit cache"
+assert_contains $'\tcache_hit_repos=1\tcache_miss_repos=0\t' "${second_compare}" "repeat hardened compare should still hit cache"
+assert_contains $'\tcontract_version=8\t' "${second_compare}" "repeat hardened compare should expose the v8 compare contract"

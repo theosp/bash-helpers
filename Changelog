@@ -1,5 +1,22 @@
 FUTURE
 
+* Reframe `git-snapshot compare` around restore effect instead of
+  unresolved-versus-resolved visibility:
+  - default compare now shows only rows where `restore` would change the
+    current workspace
+  - `--include-no-effect` replaces the older resolved-row opt-in
+  - compare scope now unions current dirty root-scope paths with
+    snapshot-captured paths
+
+* Make compare porcelain the shared source of truth for CLI and GUI:
+  - add `compare_repo` rows and bump `compare --porcelain` to
+    `contract_version=8`
+  - emit actual `include_no_effect` / `compare_base` request values and
+    base-oriented line stats
+  - simplify compare rendering to effect/shown/+/- summaries and per-row
+    display labels such as `no restore effect`, `mode change`,
+    `binary change`, and `submodule change`
+
 v1.0.44 (2026-03-29)
 
 * Add physical-base path helper utilities for root containment,

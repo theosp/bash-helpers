@@ -37,6 +37,22 @@ function parseBooleanArg(value, label) {
   return value;
 }
 
+function normalizeCompareBase(value, fallback) {
+  const candidate = String(value || fallback || "snapshot").trim();
+  if (candidate === "snapshot" || candidate === "working-tree") {
+    return candidate;
+  }
+  return "snapshot";
+}
+
+function parseCompareBaseArg(value, label) {
+  const candidate = String(value || "").trim();
+  if (candidate !== "snapshot" && candidate !== "working-tree") {
+    throw new SnapshotGuiError(`${label} must be working-tree or snapshot`);
+  }
+  return candidate;
+}
+
 function parsePositiveIntegerSetting(rawValue, fallback, label) {
   if (rawValue === undefined || rawValue === null || rawValue === "") {
     return fallback;
@@ -124,7 +140,10 @@ function parseArgs(argv) {
     rootRepo: "",
     snapshotId: "",
     repoFilter: "",
+    compareIncludeNoEffect: "false",
     compareShowAll: "false",
+    compareBase: "snapshot",
+    compareBaseExplicit: "false",
     inspectIncludeStaged: "true",
     inspectIncludeUnstaged: "true",
     inspectIncludeUntracked: "true",
@@ -146,7 +165,10 @@ function parseArgs(argv) {
     else if (key === "--root-repo") out.rootRepo = value;
     else if (key === "--snapshot-id") out.snapshotId = value;
     else if (key === "--repo-filter") out.repoFilter = value;
-    else if (key === "--compare-show-all") out.compareShowAll = parseBooleanArg(value, "--compare-show-all");
+    else if (key === "--compare-include-no-effect") out.compareIncludeNoEffect = parseBooleanArg(value, "--compare-include-no-effect");
+    else if (key === "--compare-show-all") out.compareIncludeNoEffect = parseBooleanArg(value, "--compare-show-all");
+    else if (key === "--compare-base") out.compareBase = parseCompareBaseArg(value, "--compare-base");
+    else if (key === "--compare-base-explicit") out.compareBaseExplicit = parseBooleanArg(value, "--compare-base-explicit");
     else if (key === "--inspect-include-staged") out.inspectIncludeStaged = parseBooleanArg(value, "--inspect-include-staged");
     else if (key === "--inspect-include-unstaged") out.inspectIncludeUnstaged = parseBooleanArg(value, "--inspect-include-unstaged");
     else if (key === "--inspect-include-untracked") out.inspectIncludeUntracked = parseBooleanArg(value, "--inspect-include-untracked");
@@ -167,7 +189,9 @@ function parseArgs(argv) {
     mode: out.mode,
     snapshotId: out.snapshotId,
     repoFilter: out.repoFilter,
-    compareShowAll: out.compareShowAll,
+    compareIncludeNoEffect: out.compareIncludeNoEffect,
+    compareShowAll: out.compareIncludeNoEffect,
+    compareBase: out.compareBase,
     inspectIncludeStaged: out.inspectIncludeStaged,
     inspectIncludeUnstaged: out.inspectIncludeUnstaged,
     inspectIncludeUntracked: out.inspectIncludeUntracked,
@@ -292,9 +316,15 @@ function normalizeViewState(rawState, args) {
   const mode = normalizeMode(rawState.mode, args.initialViewState ? args.initialViewState.mode : args.mode);
   const snapshotId = String(rawState.snapshotId || args.initialViewState?.snapshotId || args.snapshotId || "");
   const repoFilter = String(rawState.repoFilter || "");
-  const compareShowAll = normalizeBool(
-    rawState.compareShowAll,
-    args.initialViewState ? args.initialViewState.compareShowAll : args.compareShowAll === "true"
+  const compareIncludeNoEffect = normalizeBool(
+    rawState.compareIncludeNoEffect,
+    args.initialViewState
+      ? args.initialViewState.compareIncludeNoEffect
+      : ((args.compareIncludeNoEffect || args.compareShowAll) === "true")
+  );
+  const compareBase = normalizeCompareBase(
+    rawState.compareBase,
+    args.initialViewState ? args.initialViewState.compareBase : args.compareBase
   );
   let inspectIncludeStaged = normalizeBool(
     rawState.inspectIncludeStaged,
@@ -327,7 +357,9 @@ function normalizeViewState(rawState, args) {
     mode,
     snapshotId,
     repoFilter,
-    compareShowAll,
+    compareIncludeNoEffect,
+    compareShowAll: compareIncludeNoEffect,
+    compareBase,
     inspectIncludeStaged,
     inspectIncludeUnstaged,
     inspectIncludeUntracked,
@@ -343,7 +375,8 @@ function viewStateKey(viewState) {
     mode: viewState.mode,
     snapshotId: viewState.snapshotId,
     repoFilter: viewState.repoFilter,
-    compareShowAll: boolString(viewState.compareShowAll),
+    compareIncludeNoEffect: boolString(viewState.compareIncludeNoEffect),
+    compareBase: normalizeCompareBase(viewState.compareBase),
     inspectIncludeStaged: boolString(viewState.inspectIncludeStaged),
     inspectIncludeUnstaged: boolString(viewState.inspectIncludeUnstaged),
     inspectIncludeUntracked: boolString(viewState.inspectIncludeUntracked),
@@ -1431,7 +1464,9 @@ function serializeViewStateToQuery(viewState) {
   params.set("mode", viewState.mode);
   params.set("snapshot_id", viewState.snapshotId);
   params.set("repo_filter", viewState.repoFilter || "");
-  params.set("compare_show_all", boolString(viewState.compareShowAll));
+  params.set("compare_include_no_effect", boolString(viewState.compareIncludeNoEffect));
+  params.set("compare_show_all", boolString(viewState.compareIncludeNoEffect));
+  params.set("compare_base", normalizeCompareBase(viewState.compareBase));
   params.set("inspect_include_staged", boolString(viewState.inspectIncludeStaged));
   params.set("inspect_include_unstaged", boolString(viewState.inspectIncludeUnstaged));
   params.set("inspect_include_untracked", boolString(viewState.inspectIncludeUntracked));
@@ -1478,7 +1513,8 @@ function documentTitleForViewState(viewState) {
     viewStateRepoScopeText(viewState.repoFilter),
   ];
   if (viewState.mode === "compare") {
-    parts.push(viewState.compareShowAll ? "all statuses" : "unresolved only");
+    parts.push(viewState.compareIncludeNoEffect ? "including no-effect rows" : "effect rows only");
+    parts.push(normalizeCompareBase(viewState.compareBase));
   } else {
     parts.push(viewStateInspectCategoryLabel(viewState));
     parts.push(viewStateInspectScopeLabel(viewState));
@@ -2212,7 +2248,7 @@ function htmlPage(initialViewState) {
       <div class="control mode-compare">
         <div class="toggle-group-title">Compare</div>
         <div class="toggle-row">
-          <label><input id="compareShowAll" type="checkbox" /> show resolved rows</label>
+          <label><input id="compareShowAll" type="checkbox" /> show no-effect rows</label>
         </div>
       </div>
       <div class="control mode-inspect">
@@ -2308,7 +2344,9 @@ function htmlPage(initialViewState) {
         mode: nextMode,
         snapshotId: snapshotSelect.value,
         repoFilter: repoFilterSelect.value || "",
+        compareIncludeNoEffect: Boolean(compareShowAll.checked),
         compareShowAll: Boolean(compareShowAll.checked),
+        compareBase: currentViewState.compareBase || "snapshot",
         inspectIncludeStaged: Boolean(inspectStaged.checked),
         inspectIncludeUnstaged: Boolean(inspectUnstaged.checked),
         inspectIncludeUntracked: Boolean(inspectUntracked.checked),
@@ -2324,7 +2362,9 @@ function htmlPage(initialViewState) {
       params.set("mode", viewState.mode);
       params.set("snapshot_id", viewState.snapshotId || "");
       params.set("repo_filter", viewState.repoFilter || "");
-      params.set("compare_show_all", viewState.compareShowAll ? "true" : "false");
+      params.set("compare_include_no_effect", viewState.compareIncludeNoEffect ? "true" : "false");
+      params.set("compare_show_all", viewState.compareIncludeNoEffect ? "true" : "false");
+      params.set("compare_base", normalizeCompareBase(viewState.compareBase));
       params.set("inspect_include_staged", viewState.inspectIncludeStaged ? "true" : "false");
       params.set("inspect_include_unstaged", viewState.inspectIncludeUnstaged ? "true" : "false");
       params.set("inspect_include_untracked", viewState.inspectIncludeUntracked ? "true" : "false");
@@ -3211,7 +3251,7 @@ function htmlPage(initialViewState) {
     }
 
     function controlVisibleRowsLabel(viewState) {
-      return viewState.compareShowAll ? "all statuses" : "unresolved only";
+      return viewState.compareIncludeNoEffect ? "including no-effect rows" : "effect rows only";
     }
 
     function inspectCategoryLabel(viewState) {
@@ -3429,7 +3469,7 @@ function htmlPage(initialViewState) {
       currentViewState = Object.assign({}, viewState);
       selectionKeyValue = selectionKeyFromViewState(currentViewState);
       modeSelect.value = currentViewState.mode;
-      compareShowAll.checked = Boolean(currentViewState.compareShowAll);
+      compareShowAll.checked = Boolean(currentViewState.compareIncludeNoEffect);
       inspectStaged.checked = Boolean(currentViewState.inspectIncludeStaged);
       inspectUnstaged.checked = Boolean(currentViewState.inspectIncludeUnstaged);
       inspectUntracked.checked = Boolean(currentViewState.inspectIncludeUntracked);
@@ -3889,8 +3929,8 @@ function htmlPage(initialViewState) {
       const summary = data.summaryFields || {};
       const unresolvedTotal = Number(summary.unresolved_total || 0);
       const filesTotal = Number(summary.files_total || 0);
-      if (!rows.length && !currentViewState.compareShowAll && unresolvedTotal === 0 && filesTotal > 0) {
-        emptyStateMessage = "No unresolved rows. Toggle show resolved rows to include resolved files.";
+      if (!rows.length && !currentViewState.compareIncludeNoEffect && unresolvedTotal === 0 && filesTotal > 0) {
+        emptyStateMessage = "No restore-effect rows. Toggle show no-effect rows to include rows where restore would not change the working tree.";
       } else {
         emptyStateMessage = "No rows to display.";
       }
@@ -4075,7 +4115,8 @@ function loadCompareData(args, viewState, resolver) {
 
   const cmd = ["compare", viewState.snapshotId, "--porcelain"];
   if (viewState.repoFilter) cmd.push("--repo", viewState.repoFilter);
-  if (viewState.compareShowAll) cmd.push("--all");
+  if (viewState.compareIncludeNoEffect) cmd.push("--include-no-effect");
+  cmd.push("--base", normalizeCompareBase(viewState.compareBase));
 
   const parsed = parseComparePorcelain(runGitSnapshot(args, cmd));
   parsed.availableRepos = resolver.repoList(viewState.snapshotId);
@@ -4139,7 +4180,10 @@ function resolveViewStateFromUrl(url, args) {
     mode: getParam("mode", args.initialViewState.mode),
     snapshotId: getParam("snapshot_id", args.initialViewState.snapshotId),
     repoFilter: getParam("repo_filter", args.initialViewState.repoFilter),
-    compareShowAll: getParam("compare_show_all", args.initialViewState.compareShowAll),
+    compareIncludeNoEffect: url.searchParams.has("compare_include_no_effect")
+      ? url.searchParams.get("compare_include_no_effect")
+      : getParam("compare_show_all", args.initialViewState.compareIncludeNoEffect || args.initialViewState.compareShowAll),
+    compareBase: getParam("compare_base", args.initialViewState.compareBase || "snapshot"),
     inspectIncludeStaged: getParam("inspect_include_staged", args.initialViewState.inspectIncludeStaged),
     inspectIncludeUnstaged: getParam("inspect_include_unstaged", args.initialViewState.inspectIncludeUnstaged),
     inspectIncludeUntracked: getParam("inspect_include_untracked", args.initialViewState.inspectIncludeUntracked),
@@ -4182,7 +4226,8 @@ function runTestMode(args, resolver) {
       ` mode=${viewState.mode}` +
       ` snapshot_id=${viewState.snapshotId}` +
       ` rows=${rowsLength}` +
-      ` show_all=${boolString(viewState.compareShowAll)}` +
+      ` include_no_effect=${boolString(viewState.compareIncludeNoEffect)}` +
+      ` compare_base=${normalizeCompareBase(viewState.compareBase)}` +
       ` inspect_staged=${boolString(viewState.inspectIncludeStaged)}` +
       ` inspect_unstaged=${boolString(viewState.inspectIncludeUnstaged)}` +
       ` inspect_untracked=${boolString(viewState.inspectIncludeUntracked)}` +

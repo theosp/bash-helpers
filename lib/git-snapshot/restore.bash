@@ -410,6 +410,35 @@ _git_snapshot_restore_collect_status_hash_mismatches() {
   GSN_RESTORE_STATUS_HASH_MISMATCH_ROWS="$(_git_snapshot_restore_dedup_lines "${mismatch_rows}")"
 }
 
+_git_snapshot_restore_collect_current_only_repo_paths() {
+  local root_repo="$1"
+  local target_snapshot_path="$2"
+  local snapshot_repo_paths_file=""
+  local rel_path=""
+  local repo_abs=""
+
+  snapshot_repo_paths_file="$(mktemp)"
+  : > "${snapshot_repo_paths_file}"
+
+  while IFS=$'\t' read -r _repo_id rel_path _head_expected _status_hash_expected; do
+    [[ -z "${rel_path}" ]] && continue
+    printf "%s\n" "${rel_path}" >> "${snapshot_repo_paths_file}"
+  done < <(_git_snapshot_store_read_repo_entries "${target_snapshot_path}")
+
+  while IFS= read -r rel_path; do
+    [[ -z "${rel_path}" ]] && continue
+    if grep -Fxq -- "${rel_path}" "${snapshot_repo_paths_file}"; then
+      continue
+    fi
+    repo_abs="${root_repo}/${rel_path}"
+    if [[ -n "$(git -C "${repo_abs}" status --porcelain=v1 --untracked-files=all 2>/dev/null || true)" ]]; then
+      printf "%s\n" "${rel_path}"
+    fi
+  done < <(_git_snapshot_repo_collect_all_relative_paths "${root_repo}")
+
+  rm -f "${snapshot_repo_paths_file}"
+}
+
 _git_snapshot_restore_emit_partial_summary_human() {
   local target_snapshot_id="$1"
   local safety_snapshot_id="$2"
@@ -507,6 +536,24 @@ _git_snapshot_restore_with_optional_rollback() {
   done < <(_git_snapshot_store_read_repo_entries "${target_snapshot_path}")
 
   if [[ "${restore_failed}" != "true" ]]; then
+    while IFS= read -r rel_path; do
+      [[ -z "${rel_path}" ]] && continue
+      repos_processed=$((repos_processed + 1))
+      repo_abs="${root_repo}/${rel_path}"
+      human_repo_label="$(_git_snapshot_ui_human_repo_label "${root_repo}" "${rel_path}")"
+      if ! _git_snapshot_clear_single_repo "${repo_abs}"; then
+        _git_snapshot_restore_porcelain_emit "${porcelain}" "restore_repo\tsnapshot_id=${target_snapshot_id}\trepo=${rel_path}\tstatus=failed\tmode=rollback\tcurrent_only=true"
+        if [[ "${porcelain}" != "true" ]]; then
+          _git_snapshot_ui_err "Restore failed while clearing current-only repo=${human_repo_label}"
+        fi
+        restore_failed=true
+        break
+      fi
+      _git_snapshot_restore_porcelain_emit "${porcelain}" "restore_repo\tsnapshot_id=${target_snapshot_id}\trepo=${rel_path}\tstatus=restored\tmode=rollback\tcurrent_only=true"
+    done < <(_git_snapshot_restore_collect_current_only_repo_paths "${root_repo}" "${target_snapshot_path}")
+  fi
+
+  if [[ "${restore_failed}" != "true" ]]; then
     while IFS=$'\t' read -r repo_id rel_path _head_expected status_hash_expected; do
       [[ -z "${repo_id}" ]] && continue
       repo_abs="${root_repo}/${rel_path}"
@@ -587,7 +634,7 @@ _git_snapshot_restore_with_reject_mode() {
     repo_bundle_dir="$(_git_snapshot_store_repo_dir_for_id "${target_snapshot_path}" "${repo_id}")"
     human_repo_label="$(_git_snapshot_ui_human_repo_label "${root_repo}" "${rel_path}")"
 
-    current_head="$(git -C "${repo_abs}" rev-parse HEAD 2>/dev/null || true)"
+      current_head="$(git -C "${repo_abs}" rev-parse HEAD 2>/dev/null || true)"
     if [[ "${current_head}" != "${head_expected}" ]]; then
       if [[ "${porcelain}" != "true" ]]; then
         _git_snapshot_ui_warn "HEAD mismatch for ${human_repo_label}: snapshot=${head_expected}, current=${current_head}; attempting best-effort restore."
@@ -614,6 +661,20 @@ _git_snapshot_restore_with_reject_mode() {
         ;;
     esac
   done < <(_git_snapshot_store_read_repo_entries "${target_snapshot_path}")
+
+  while IFS= read -r rel_path; do
+    [[ -z "${rel_path}" ]] && continue
+    repos_total=$((repos_total + 1))
+    repo_abs="${root_repo}/${rel_path}"
+    if _git_snapshot_clear_single_repo "${repo_abs}"; then
+      repos_restored=$((repos_restored + 1))
+      _git_snapshot_restore_porcelain_emit "${porcelain}" "restore_repo\tsnapshot_id=${target_snapshot_id}\trepo=${rel_path}\tstatus=restored\tstaged=none\tunstaged=none\tuntracked=none\tmode=reject\tcurrent_only=true"
+    else
+      hard_failures=$((hard_failures + 1))
+      hard_failure_rows+="$(_git_snapshot_restore_hard_failure_row "${rel_path}" "failed to clear current-only repo")"$'\n'
+      _git_snapshot_restore_porcelain_emit "${porcelain}" "restore_repo\tsnapshot_id=${target_snapshot_id}\trepo=${rel_path}\tstatus=failed\tstaged=none\tunstaged=none\tuntracked=none\tmode=reject\tcurrent_only=true"
+    fi
+  done < <(_git_snapshot_restore_collect_current_only_repo_paths "${root_repo}" "${target_snapshot_path}")
 
   reject_rows="$(_git_snapshot_restore_dedup_lines "${reject_rows}")"
   collision_rows="$(_git_snapshot_restore_dedup_lines "${collision_rows}")"

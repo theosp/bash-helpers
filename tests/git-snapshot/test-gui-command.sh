@@ -40,10 +40,12 @@ assert_eq "gui-second" "${second_snapshot_id}" "second gui snapshot id should be
 
 gui_explicit_output="$(cd "${root_repo}" && GIT_SNAPSHOT_GUI_TEST_MODE=1 git_snapshot_test_cmd gui "${first_snapshot_id}")"
 assert_contains "GUI_TEST mode=compare snapshot_id=${first_snapshot_id}" "${gui_explicit_output}" "gui should open the compare UI for an explicit snapshot id"
-assert_contains "show_all=false" "${gui_explicit_output}" "gui should keep unresolved-only visibility by default"
+assert_contains "include_no_effect=false" "${gui_explicit_output}" "gui should keep restore-effect-only visibility by default"
+assert_contains "compare_base=snapshot" "${gui_explicit_output}" "gui should boot compare mode with the snapshot base by default"
 
 gui_default_output="$(cd "${root_repo}" && GIT_SNAPSHOT_GUI_TEST_MODE=1 git_snapshot_test_cmd gui)"
 assert_contains "GUI_TEST mode=compare snapshot_id=${second_snapshot_id}" "${gui_default_output}" "gui without args should select the latest user-created snapshot"
+assert_contains "include_no_effect=false" "${gui_default_output}" "gui without args should keep restore-effect-only visibility by default"
 
 repo_output="$(run_gui_expect_error "gui --repo" --repo .)"
 assert_contains "git-snapshot gui accepts only an optional snapshot_id." "${repo_output}" "gui --repo should explain the narrow gui contract"

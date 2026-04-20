@@ -25,13 +25,13 @@ compare_default_code=$?
 set -e
 
 assert_exit_code 0 "${compare_default_code}" "compare should succeed for snapshot captured from unborn HEAD"
-assert_contains "Compare: no unresolved snapshot work." "${compare_default_output}" "unborn compare should complete successfully"
-assert_contains "No rows to display for current visibility filter." "${compare_default_output}" "default compare should hide resolved rows for unborn snapshot"
+assert_contains "Compare: restore would not change any compared paths." "${compare_default_output}" "unborn compare should complete successfully"
+assert_contains "No restore-effect rows to display. Re-run with --include-no-effect to include no restore effect rows." "${compare_default_output}" "default compare should hide resolved rows for unborn snapshot"
 
-compare_all_output="$(cd "${repo}" && git_snapshot_test_cmd compare "${snapshot_id}" --repo . --all)"
-assert_contains "unborn.txt [resolved_uncommitted]" "${compare_all_output}" "unborn snapshot target should classify as resolved_uncommitted before first commit"
+compare_all_output="$(cd "${repo}" && git_snapshot_test_cmd compare "${snapshot_id}" --repo . --include-no-effect)"
+assert_contains "unborn.txt [no restore effect]" "${compare_all_output}" "unborn snapshot target should surface as no-effect before first commit"
 
 git -C "${repo}" commit -m "commit unborn snapshot target" >/dev/null
 
-compare_committed_output="$(cd "${repo}" && git_snapshot_test_cmd compare "${snapshot_id}" --repo . --all)"
-assert_contains "unborn.txt [resolved_committed]" "${compare_committed_output}" "unborn snapshot target should classify as resolved_committed after first commit"
+compare_committed_output="$(cd "${repo}" && git_snapshot_test_cmd compare "${snapshot_id}" --repo . --include-no-effect)"
+assert_contains "unborn.txt [no restore effect]" "${compare_committed_output}" "unborn snapshot target should remain no-effect after first commit"

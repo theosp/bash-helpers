@@ -49,7 +49,7 @@ assert_eq "3" "${compare_target_meta_count}" "every repo bundle should include c
 assert_eq "3" "${compare_target_sig_count}" "every repo bundle should include compare target signatures"
 assert_eq "3" "${compare_target_paths_count}" "every repo bundle should include compare target paths"
 
-compare_before_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${snapshot_id}" --all --porcelain)"
+compare_before_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${snapshot_id}" --include-no-effect --porcelain)"
 assert_eq "v3" "$(git_snapshot_test_extract_porcelain_field "${compare_before_output}" "compare_summary" "engine")" "fresh roundtrip compare should use v3 engine"
 assert_eq "0" "$(git_snapshot_test_extract_porcelain_field "${compare_before_output}" "compare_summary" "unresolved_total")" "fresh roundtrip compare should start fully resolved"
 normalized_compare_before="$(git_snapshot_test_normalize_compare_porcelain "${compare_before_output}")"
@@ -62,7 +62,7 @@ git -C "${sub1}" clean -fd >/dev/null
 git -C "${root_repo}" reset --hard >/dev/null
 git -C "${root_repo}" clean -fd >/dev/null
 
-compare_disrupted_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${snapshot_id}" --all --porcelain)"
+compare_disrupted_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${snapshot_id}" --include-no-effect --porcelain)"
 assert_ne "0" "$(git_snapshot_test_extract_porcelain_field "${compare_disrupted_output}" "compare_summary" "unresolved_total")" "disrupted roundtrip compare should expose unresolved work"
 
 set +e
@@ -77,6 +77,6 @@ restore_output="$(cd "${root_repo}" && git_snapshot_test_cmd restore "${snapshot
 assert_contains $'restore_summary\tsnapshot_id='"${snapshot_id}"$'\tmode=reject\tresult=success' "${restore_output}" "roundtrip restore should succeed in default reject mode"
 assert_contains "exit_code=0" "${restore_output}" "roundtrip restore should return success exit code"
 
-compare_after_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${snapshot_id}" --all --porcelain)"
+compare_after_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${snapshot_id}" --include-no-effect --porcelain)"
 assert_eq "0" "$(git_snapshot_test_extract_porcelain_field "${compare_after_output}" "compare_summary" "unresolved_total")" "roundtrip compare should return to zero unresolved items after restore"
 assert_eq "${normalized_compare_before}" "$(git_snapshot_test_normalize_compare_porcelain "${compare_after_output}")" "roundtrip compare should match the pre-disruption baseline after restore"
