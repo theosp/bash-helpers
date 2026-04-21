@@ -94,16 +94,18 @@ Ignored files are intentionally out of scope.
 
 ### Compare semantics
 
-`git-snapshot compare` evaluates progress of snapshot-captured work items.
+`git-snapshot compare` evaluates the restore effect of a snapshot against the
+current workspace.
 
-Compare tracks only files touched by the snapshot bundles (staged/unstaged/untracked at capture time), and classifies each touched file as:
-- `resolved_committed`
-- `resolved_uncommitted`
-- `unresolved_missing`
-- `unresolved_diverged`
+Compare scope unions:
+- dirty paths in the current root-most repo scope
+- paths captured by the snapshot staged/unstaged/untracked bundles
 
-Default compare output shows unresolved rows only. Use `--all` to include resolved rows.
-Use `--diff` to include unified diffs for `unresolved_diverged` rows.
+Default compare output shows only rows where `restore` would change the working
+tree now (`restore_effect=changes`). Use `--include-no-effect` to also include
+rows that already match the restore baseline (`restore_effect=none`).
+Use `--diff` to include unified diffs for textual restore-effect rows that still
+diverge from the restore baseline.
 
 When `snapshot_id` is omitted for compare:
 - the tool selects the latest `origin=user` snapshot from the entire shared-folder registry
@@ -216,15 +218,17 @@ Other flags:
 
 Porcelain rows:
 - `inspect_target`: selected scope/summary row with `contract_version=2`
-- `inspect_repo`: one row per repo with relation/apply-check/collision counters
-- `inspect`: one row per selected category with captured file totals
-- `inspect_file`: one row per captured file
+- `inspect_repo`: one row per repo with relation/apply-check/collision counters plus visible `file_count` / `lines_added` / `lines_removed`
+- `inspect`: one row per selected category with captured `file_count` / `lines_added` / `lines_removed`
+- `inspect_file`: one row per captured file, including `lines_added`, `lines_removed`, `display_kind`, and `display_label`
 
 GUI notes:
 - `inspect --gui` cannot be combined with `--porcelain`
 - `inspect --gui` ignores `--name-only`, `--stat`, and `--diff`
 - inspect mode is read-only: it previews captured staged/unstaged patch blocks and captured untracked file contents
-- the browser shell includes a mode picker, snapshot picker, repo filter, category toggles, and an `all repos` toggle for clean-repo summaries
+- the browser shell keeps mode, snapshot, refresh, create, and primary-action controls in the top bar
+- compare/inspect use a custom snapshot picker instead of the browser-native select: snapshots are listed newest first, the newest snapshot is the default selection, and each entry shows exact local creation time with inline rename/delete actions
+- compare mode keeps the base toggle beside `Snapshot`, while advanced compare controls such as repo filtering and `show no-effect rows` live behind the `Filters` button and surface non-default state as `Filters (N)`
 
 ### `git-snapshot restore-check <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]`
 
@@ -250,54 +254,165 @@ Exit codes:
 
 ### `git-snapshot gui [snapshot_id]`
 
-Opens the shared browser UI in compare mode.
+Opens the shared browser UI in browse mode.
 
-- No args: open the compare UI for the latest user-created snapshot.
-- `<snapshot_id>`: open the compare UI for that snapshot.
+- Running `git-snapshot` with no subcommand is equivalent to `git-snapshot gui`.
+- No args: open the browse UI and preselect the latest user-created snapshot when one exists.
+- `<snapshot_id>`: open the browse UI and preselect that snapshot for later compare/inspect switching.
 - `git-snapshot gui` accepts only an optional `snapshot_id`.
-- Use `git-snapshot compare --gui` when you need pre-launch compare flags such as `--repo`, `--all`, `--diff`, or `--porcelain`.
-- Once open, the browser UI can switch between compare and inspect modes.
+- Use `git-snapshot browse --gui` when you need pre-launch browse filters such as `--staged`, `--unstaged`, `--untracked`, `--submodules`, or `--all-repos`.
+- Use `git-snapshot compare --gui` when you need pre-launch compare flags such as `--repo`, `--include-no-effect`, `--diff`, `--base`, or `--porcelain`.
+- Use `git-snapshot review --gui` when you need pre-launch review repo/base selection such as `--repo`, `--base`, or `--repo-base`.
+- Once open, the browser UI can switch between browse, compare, inspect, and review modes.
 
-### `git-snapshot compare [snapshot_id] [--repo <rel_path>] [--all] [--diff] [--gui] [--porcelain]`
+### `git-snapshot review [--repo <rel_path> ...] [--base <ref>] [--repo-base <rel_path> <ref>] [--gui] [--porcelain]`
 
-Compares current progress against snapshot-captured work items.
+Reviews committed branch delta for explicitly selected repos against a configurable base ref.
 
 Default behavior:
-- compare evaluates files touched by the snapshot bundles
-- output shows unresolved rows only
+- review compares `merge-base(effective_base, HEAD) .. HEAD` per selected repo
+- default base is `master`
+- per-repo overrides can replace the default base with a branch, tag, commit SHA, or other resolvable ref
+- if the requested base is missing in a repo and local `master` exists there, review falls back to `master` and reports that fallback explicitly
+- working-tree dirt is shown only as repo metadata (`dirty=true|false`); it is not folded into review file rows
+
+Use `--base <ref>` to set the default review base for all selected repos.
+Use `--repo-base <rel_path> <ref>` to override that base for one selected repo.
+Use `--gui` to launch the shared browser shell directly into review mode.
+Use `--porcelain` to emit `review_target`, `review_summary`, `review_repo`, `review_ref`, and `review_file` rows (`contract_version=1`).
+
+Review GUI notes:
+- review selection is explicit: only selected repos are shown
+- review stores ordered named presets per root repo under the local git-snapshot home, not in git
+- presets capture ordered repos, the default base, and per-repo base overrides
+- the shareable URL keeps the expanded review state via `review_repos`, `review_base`, and `review_repo_bases`
+- the toolbar exposes a default-base picker, and each review repo header exposes a per-repo base picker with `Use default (...)` to clear overrides
+- when a requested base is missing, the repo header and per-repo picker call out whether review fell back to local `master` or could not resolve any usable base there
+
+### `git-snapshot browse [--repo <rel_path>] [--staged|--unstaged|--untracked|--submodules|--all] [--all-repos] [--gui] [--porcelain]`
+
+Browses live Git changes across the root-most repo and initialized recursive submodules.
+
+Default behavior:
+- browse compares against each repo `HEAD`
+- staged rows show `HEAD -> index`
+- unstaged rows show `index -> working tree`
+- untracked rows show `empty -> working tree`
+- submodule rows summarize live gitlink/checkout drift relative to `HEAD`
+
+Use `--all` to include all browse categories when you want to be explicit.
+Use `--all-repos` to keep clean repos in the navigator and repo filter.
+Use `--gui` to launch the shared browser shell directly into browse mode.
+In the shared GUI, browse mode exposes `Edit File` for real working-tree files only.
+Use `--porcelain` to emit:
+- `browse_target`: selected live-scope summary row with `contract_version=1`
+- `browse_repo`: one row per repo with visible `file_count` / `lines_added` / `lines_removed`
+- `browse`: one row per visible browse category with `file_count` / `lines_added` / `lines_removed`
+- `browse_file`: one row per live file or submodule summary, including `lines_added`, `lines_removed`, `display_kind`, and `display_label`
+
+### `git-snapshot compare [snapshot_id] [--repo <rel_path>] [--include-no-effect] [--diff] [--base <working-tree|snapshot>] [--gui] [--porcelain]`
+
+Compares the current workspace against the restore state implied by the
+snapshot.
+
+Default behavior:
+- compare evaluates dirty paths in the current root scope plus paths captured by the snapshot bundles
+- output shows restore-effect rows only
 - exits `0` on successful completion
 
 `--repo` convenience:
 - passing the current root folder name is treated as `.` (for example from `/path/justdo-devops`, `--repo justdo-devops` == `--repo .`)
 
-Use `--all` to include resolved rows.
-Use `--diff` to include inline unified diffs for `unresolved_diverged` rows.
-Use `git-snapshot gui [snapshot_id]` as the shortcut to open the shared browser shell in compare mode.
+Use `--include-no-effect` to include rows where restore would not change the working tree.
+Use `--diff` to include inline unified diffs for diverged textual restore-effect rows.
+Use `--base working-tree` for restore-oriented diffs, or `--base snapshot` to see post-snapshot working-tree changes as additions.
+Use `git-snapshot` or `git-snapshot gui [snapshot_id]` as the shortcut to open the shared browser shell in browse mode with an optional compare/inspect snapshot preselected.
 Use `--gui` to launch the shared browser shell in compare mode (Node-based local web UI) with per-file diff preview and external diff launching when you need compare-specific pre-launch flags.
 `--gui` cannot be combined with `--porcelain`.
 If `--gui` and `--diff` are both passed, compare warns and ignores `--diff` (GUI renders per-file diffs internally).
 
 GUI notes:
-- Compare/inspect state is controlled inside the browser UI via mode, snapshot, repo, and mode-specific toggles.
-- Control changes auto-refresh the active view; Refresh reruns the exact current state and resets cached previews.
-- Compare rows are cached per serialized view state.
+- Browse/compare/inspect/review state is controlled inside the browser UI via mode, snapshot, repo, and mode-specific toggles.
+- Control changes auto-refresh the active view.
+- `Refresh` reloads the current view.
+- `Reload Snapshots` also refreshes snapshot inventory for snapshot-backed views.
+- Browse mode `Create Snapshot...` suggests a fresh timestamp-based id and includes an optional clear-after-capture checkbox (`--clear`), off by default.
+- After browse mode creates a snapshot, the browser automatically switches into compare mode with that new snapshot selected.
+- Browse/compare/review rows are cached per serialized view state.
 - Snapshot-side file is materialized on demand per selected file (no full snapshot tree reconstruction).
 - Runtime is pinned to Node `22.22.0` via the repo `.nvmrc`.
-- If `node -v` already resolves to `22.22.0`, `compare --gui`, `inspect --gui`, and the Playwright UI suite use it directly.
+- If `node -v` already resolves to `22.22.0`, `browse --gui`, `compare --gui`, `inspect --gui`, and the Playwright UI suite use it directly.
 - Otherwise the commands auto-select the pinned runtime via `nvm` (override `nvm` location with `NVM_DIR` when needed).
 - Install the pinned runtime with `nvm install 22.22.0` if your active `node` does not already match the pin.
 - GUI opens in your default browser and runs from a local `127.0.0.1` server started by the command.
 - The GUI server prefers `127.0.0.1:34757` and then tries the next ports in order when that port is occupied.
 - First-time diff fetch for a file shows a loading indicator while preview is prepared.
-- Compare mode exposes external diff launch; inspect mode does not.
-- External diff launch order is snapshot-left/current-right.
+- Browse mode exposes `Edit File` for real working-tree files; compare mode exposes external diff launch; inspect mode is read-only; review mode previews committed branch diff only.
+- Repo/category header selection opens stacked aggregate previews in the right pane; previews page in chunks of `25` rows via `Show more`.
+- Reloading the page in live modes (`browse` and `compare`) revalidates live data instead of blindly reusing the last cached row set.
+- Aggregate previews surface partial failures inline: the preview stays usable, but the summary warns when one or more blocks could not be rendered cleanly.
+- Set `GIT_SNAPSHOT_GUI_PREVIEW_TELEMETRY=1` while stress-testing large aggregate previews to log capped and aborted preview requests with per-page timings.
+- Set `GIT_SNAPSHOT_ROW_STATS_TELEMETRY=1` to log browse/inspect row-stat collection timings. The GUI server emits `ROW_STATS_VIEW ...` lines for whole-view loads, while the bash collectors emit `ROW_STATS ...` lines per category. Lower `GIT_SNAPSHOT_ROW_STATS_SLOW_MS` to flag smaller runs as `slow=1` while profiling bulk untracked fixtures.
+- File rows expose a context menu with `Mark as viewed`, `Unmark as viewed`, and `Mark current version as viewed` when the row changed after it was marked.
+- Repo and category rows expose the same context menu through right-click, `Shift+F10`, and an explicit `⋯` trigger. Their `Mark all as viewed` / `Unmark all as viewed` actions apply only to the currently visible child file rows in that selection.
+- Viewed state is GUI-local and root-path-local. It is stored under `$HOME/git-snapshots/<root-folder>/.viewed-state.json`, keyed by the physical root repo path so different copies of the same folder name do not share marks accidentally.
+- When a viewed row changes, the preview offers `Current` and `Since viewed`. `Since viewed` compares the stored viewed preview snapshot to the current preview.
+- Stored viewed previews live under `$HOME/git-snapshots/<root-folder>/viewed-preview-blobs/`. Oversized preview snapshots are skipped instead of being persisted; override the cap with `GIT_SNAPSHOT_GUI_VIEWED_PREVIEW_MAX_BYTES=<bytes>` if needed while debugging.
+- The top-bar `Viewed` menu clears either the current mode’s viewed rows or all viewed rows for the current physical root repo without forcing a full data reload.
+- Selecting text inside allowed diff/preview bodies opens a selection context menu with `Copy` and `Ask`. The selection must stay inside preview body content; headers, metadata, and outside-`#diff` selections fall back to the browser menu.
+- Structured diff selections tolerate incidental gutter co-selection, but copied/asked text excludes gutter numbers and preserves the selected `+` / `-` markers and line breaks.
+- `Ask` opens a local prompt composer that copies a prompt built from the selected text only. Recent instructions are stored per physical root repo in browser `localStorage`, and saved instructions can be removed directly from the dropdown without confirmation.
+- When text is selected inside the diff pane, the selection menu is available from the selected-text context menu and the standard keyboard context-menu shortcut (`Shift+F10` / `ContextMenu`).
+- Repo-root `.git-snapshot.config` (INI / git-config-style) can set GUI defaults for `[gui "edit"]`, `[gui "external-diff"]`, `[gui "compare"]`, `[gui "snapshots"]`, and `[gui "server"]`.
+- Flags / URL state and env vars override `.git-snapshot.config`.
+- Browse `Edit File` opens the working-tree file via `.git-snapshot.config`, `GIT_SNAPSHOT_GUI_EDITOR_COMMAND_TEMPLATE`, or the OS default opener.
+- Compare mode exposes an always-visible base toggle (`working tree` / `snapshot`) and remembers your last choice in local storage unless the URL or CLI explicitly sets it.
+- Compare mode keeps `show no-effect rows` behind `Filters`; the main list focuses on restore-effect rows and simplified per-file labels such as `no restore effect`, `mode change`, `binary change`, or `submodule change`.
+- Built-in external diff launch order follows the selected compare base.
+- For a custom browse editor/opener launch shape, set `GIT_SNAPSHOT_GUI_EDITOR_COMMAND_TEMPLATE='<command> ... $FILE'`.
 - Force a built-in selector with `GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_TOOL=<tool>`.
 - For a custom launch shape, set `GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_COMMAND_TEMPLATE='<command> ... $SOURCE ... $TARGET'`.
 - Override the auto-detect order with `GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_CANDIDATES=<tool1,tool2,...>`.
+
+Manual stress checklist for aggregate previews:
+- Compare: click a large repo header, use `Show more` repeatedly, then switch to another repo before the previous expansion settles; the preview should stay on the latest selection.
+- Compare: while a repo aggregate preview is open, force one `Show more` request to fail and confirm the already loaded preview blocks stay visible with an inline error instead of dropping back to a blank pane.
+- Browse/inspect: click repo headers and category headers and confirm the right pane stacks only the visible rows for that selection.
+- Browse/inspect: verify special-path rows, including tab-containing filenames, can be selected, restored from URL state, and survive reload without jumping to the wrong row.
+- Browse: use a partially staged path and confirm the repo aggregate preview shows that same file once in staged and once in unstaged rows.
+- Browse live refresh: change a tracked file outside the GUI, wait for the live-refresh hint, refresh, and confirm the category delta pills update with the new browse totals instead of keeping stale category stats.
+- Browse/inspect: enable `GIT_SNAPSHOT_ROW_STATS_TELEMETRY=1`, then exercise a repo with many untracked files and watch for slow row-stat logs before widening rollout.
+- Viewed state: mark a file in browse, switch to compare/inspect/review and back, then reload; the `Viewed` counts and row chips should stay aligned without requiring a full data reload.
+- Viewed state: mark a tab-containing filename as viewed, reload, and confirm the same row stays marked instead of drifting to another path-shaped row.
+- Review: use a custom default base or per-repo override, click a repo header, and confirm the preview metadata shows the effective review base instead of assuming `master`.
+- Narrow viewport: repeat the repo/category selection flow around `390px` width and confirm row focus, stacked preview scrolling, and `Show more` remain usable.
 - Override the preferred server port policy with `GIT_SNAPSHOT_GUI_PORT_START=<port>` and `GIT_SNAPSHOT_GUI_PORT_COUNT=<n>`.
 - Candidate entries are selectors, not shell snippets. Canonical selectors are `meld`, `kdiff3`, `opendiff`, `bcompare`, and `code`.
 - Command templates are tokenized into argv entries with quote/backslash handling and placeholder substitution; they are not executed through a shell.
 - Use `$SOURCE` / `${SOURCE}` for the snapshot-side file and `$TARGET` / `${TARGET}` for the current working-tree file.
+- Use `$BASE` / `${BASE}` for the active compare-base side and `$OTHER` / `${OTHER}` for the opposite side.
+- Use `$FILE` / `${FILE}` for the browse-mode working-tree file path.
+- Example repo-root `.git-snapshot.config`:
+
+```ini
+[gui "edit"]
+tool = code
+
+[gui "external-diff"]
+tool = code
+candidates = code,opendiff,kdiff3,meld,bcompare
+
+[gui "compare"]
+base = working-tree
+
+[gui "snapshots"]
+show-auto = false
+
+[gui "server"]
+port-start = 34757
+port-count = 32
+```
+
 - Default auto-detect order is:
   1. `meld`
   2. `kdiff3`
@@ -305,21 +420,22 @@ GUI notes:
   4. `bcompare`
   5. `code` (launched as `code --diff`)
 
-Status model:
-- `resolved_committed`: snapshot target matches `HEAD` and current working tree
-- `resolved_uncommitted`: snapshot target matches working tree but not `HEAD`
-- `unresolved_missing`: snapshot target path is missing
-- `unresolved_diverged`: current content or mode diverges from snapshot target
+Porcelain/backend status model:
+- `resolved_committed`: restore baseline matches `HEAD` and current working tree
+- `resolved_uncommitted`: restore baseline matches working tree but not `HEAD`
+- `unresolved_missing`: restore baseline path is missing
+- `unresolved_diverged`: current content or mode diverges from restore baseline
 
 Target selection:
 - explicit id: compare that snapshot
 - omitted id: latest user-created snapshot from shared-folder registry scope
 
-Human output discloses selected snapshot metadata and status totals.
+Human output discloses selected snapshot metadata, compare base, restore-effect
+totals, and optional `shown` totals when `--include-no-effect` is enabled.
 
 Persistent compare cache:
-- compare stores per-snapshot/per-repo results under `$HOME/git-snapshots/<root>/.compare-cache-v2` by default
-- disable with `GIT_SNAPSHOT_COMPARE_CACHE=0`
+- compare stores per-snapshot/per-repo results under `$HOME/git-snapshots/<root>/.compare-cache-v2` only when `GIT_SNAPSHOT_COMPARE_CACHE=1`
+- default is off (`GIT_SNAPSHOT_COMPARE_CACHE=0`)
 - override worker parallelism with `GIT_SNAPSHOT_COMPARE_JOBS=<n>`
 - cap retained cache entries per snapshot/repo family with `GIT_SNAPSHOT_COMPARE_CACHE_MAX_ENTRIES=<n>`
 - compare uses the metadata-backed `engine=v3`
@@ -327,9 +443,10 @@ Persistent compare cache:
 - For the distinction between snapshot storage format, compare engine label, and porcelain contract version, see [`lib/git-snapshot/TECHNICAL.md`](lib/git-snapshot/TECHNICAL.md).
 
 Porcelain rows:
-- `compare_target`: selected snapshot metadata + visibility mode
-- `compare_file`: one row per shown file with escaped `file`, `status`, and `reason` (`\`, tab, newline, and carriage return are backslash-escaped)
-- `compare_summary`: totals, telemetry (`engine=v3`, `elapsed_ms`, `cache_hit_repos`, `cache_miss_repos`), and `contract_version=5`
+- `compare_target`: selected snapshot metadata plus the actual requested `include_no_effect` and `compare_base` values
+- `compare_repo`: one row per repo with shown/effect counts, shown `+/-` totals, and hidden no-effect count
+- `compare_file`: one row per shown file with escaped `file`, `restore_effect`, base-oriented `lines_added` / `lines_removed`, simplified `display_kind` / `display_label`, and richer machine fields such as `status`, `path_scope`, and `reason`
+- `compare_summary`: top-level shown/effect counts, shown `+/-` totals, hidden no-effect totals, telemetry (`engine=v3`, `elapsed_ms`, `cache_hit_repos`, `cache_miss_repos`), and `contract_version=8`
 
 Exit codes:
 - `0`: compare completed

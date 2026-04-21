@@ -182,6 +182,50 @@ git_snapshot_ui_write_fake_which() {
   chmod +x "${which_path}"
 }
 
+git_snapshot_ui_find_free_loopback_port() {
+  python3 - <<'PY'
+import socket
+
+sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+sock.bind(("127.0.0.1", 0))
+print(sock.getsockname()[1])
+sock.close()
+PY
+}
+
+git_snapshot_ui_write_fake_code_gui_tool() {
+  local fake_bin_dir="$1"
+  local editor_log="$2"
+  local external_diff_log="$3"
+  local tool_path="${fake_bin_dir}/code"
+
+  mkdir -p "${fake_bin_dir}"
+  {
+    printf '#!/usr/bin/env bash\n'
+    printf '\n'
+    printf 'set -euo pipefail\n'
+    printf 'EDITOR_LOG=%q\n' "${editor_log}"
+    printf 'EXTERNAL_DIFF_LOG=%q\n' "${external_diff_log}"
+    printf '\n'
+    printf 'LOG_FILE="${EDITOR_LOG}"\n'
+    printf 'if [[ "${1:-}" == "--diff" ]]; then\n'
+    printf '  LOG_FILE="${EXTERNAL_DIFF_LOG}"\n'
+    printf 'fi\n'
+    printf '{\n'
+    printf '  printf "tool=code\\n"\n'
+    printf '  printf "argc=%%s\\n" "$#"\n'
+    printf '  i=0\n'
+    printf '  for arg in "$@"; do\n'
+    printf '    printf "arg_%%s=%%s\\n" "${i}" "${arg}"\n'
+    printf '    i=$((i + 1))\n'
+    printf '  done\n'
+    printf '  printf "\\n"\n'
+    printf '} >> "${LOG_FILE}"\n'
+  } > "${tool_path}"
+
+  chmod +x "${tool_path}"
+}
+
 git_snapshot_ui_write_fake_auto_detect_tools() {
   local runtime_dir="$1"
   local external_diff_log="$2"
@@ -213,13 +257,25 @@ git_snapshot_ui_prepare_general_ui_suite() {
   local external_diff_command_template=""
   local external_diff_log=""
   local external_diff_spawn_log=""
+  local editor_command_template=""
+  local editor_log=""
+  local editor_spawn_log=""
+  local editor_tool=""
+  local editor_fallback_command=""
   local fake_bin_dir=""
   local allow_real_external_diff="${GIT_SNAPSHOT_UI_TESTS_ALLOW_REAL_EXTERNAL_DIFF:-0}"
   local malicious_branch=""
   local trailing_space_path=""
+  local newline_path=""
+  local tab_path=""
   local clean_sub_snapshot_sha=""
   local clean_sub_advanced_sha=""
   local clean_sub_advance_count=24
+  local snapshot_root=""
+  local primary_repo_bundle_dir=""
+  local config_file=""
+  local config_port_start=""
+  local config_port_count=""
   local i=0
 
   mkdir -p "${runtime_dir}"
@@ -246,6 +302,9 @@ git_snapshot_ui_prepare_general_ui_suite() {
   printf "staged-base\n" > "${repo}/inspect-staged.txt"
   printf "unstaged-base\n" > "${repo}/inspect-unstaged.txt"
   printf "older-base\n" > "${repo}/older-only.txt"
+  if [[ "${selected_test}" == "04" ]]; then
+    printf "partial-base\n" > "${repo}/browse-partial.txt"
+  fi
   for i in $(seq -w 1 140); do
     printf "base row %s\n" "${i}" > "${repo}/row-${i}.txt"
   done
@@ -253,6 +312,7 @@ git_snapshot_ui_prepare_general_ui_suite() {
   git -C "${repo}" commit -m "seed gui scroll fixture" >/dev/null
   git -C "${repo}" -c protocol.file.allow=always submodule add "${clean_sub_repo}" "modules/clean-sub" >/dev/null
   if [[ "${selected_test}" == "08" ]]; then
+    git -C "${repo}" -c protocol.file.allow=always submodule add "${clean_sub_repo}" "modules/staged-sub" >/dev/null
     git -C "${repo}" -c protocol.file.allow=always submodule add "${missing_sub_repo}" "modules/missing-sub" >/dev/null
   fi
   git -C "${repo}" commit -am "add gui scroll submodules" >/dev/null
@@ -277,7 +337,7 @@ git_snapshot_ui_prepare_general_ui_suite() {
   } > "${repo}/inspect-untracked.txt"
   if [[ "${selected_test}" == "05" ]]; then
     printf "captured dash-prefixed untracked line\n" > "${repo}/--inspect-untracked.txt"
-  elif [[ "${selected_test}" == "08" ]]; then
+  elif [[ "${selected_test}" == "08" || "${selected_test}" == "09" || "${selected_test}" == "10" ]]; then
     {
       printf "captured missing line 1\n"
       printf "captured missing line 2\n"
@@ -285,6 +345,10 @@ git_snapshot_ui_prepare_general_ui_suite() {
   elif [[ "${selected_test}" == "07" ]]; then
     trailing_space_path="trailing-space.txt "
     printf "captured trailing-space payload\n" > "${repo}/${trailing_space_path}"
+    newline_path=$'browse\ninspect.txt'
+    printf "captured newline payload\n" > "${repo}/${newline_path}"
+    tab_path=$'tab\tpath.txt'
+    printf "captured tab payload\n" > "${repo}/${tab_path}"
   fi
   for i in $(seq -w 1 140); do
     printf "snapshot row %s\n" "${i}" >> "${repo}/row-${i}.txt"
@@ -301,7 +365,7 @@ git_snapshot_ui_prepare_general_ui_suite() {
   (
     cd "${repo}"
     git add 000-scroll-target.txt inspect-staged.txt row-*.txt
-    if [[ "${selected_test}" == "08" ]]; then
+    if [[ "${selected_test}" == "08" || "${selected_test}" == "09" || "${selected_test}" == "10" ]]; then
       git add missing-preview.txt
     fi
   )
@@ -311,6 +375,33 @@ git_snapshot_ui_prepare_general_ui_suite() {
   if [[ "${snapshot_id}" != "gui-scroll-playwright" ]]; then
     git_snapshot_ui_fail "expected snapshot id gui-scroll-playwright, got ${snapshot_id}"
   fi
+  snapshot_root="$(git_snapshot_test_snapshot_root_for_repo "${repo}")"
+  primary_repo_bundle_dir="${snapshot_root}/${snapshot_id}/repos/repo-0001"
+
+  if [[ "${selected_test}" == "01" || "${selected_test}" == "08" ]]; then
+    {
+      printf "late current only line 1\n"
+      printf "late current only line 2\n"
+    } > "${repo}/late-current-only.txt"
+  fi
+
+  if [[ "${selected_test}" == "01" || "${selected_test}" == "07" || "${selected_test}" == "08" ]]; then
+    printf "current untracked divergence\n" >> "${repo}/inspect-untracked.txt"
+  fi
+  if [[ "${selected_test}" == "07" && -n "${trailing_space_path}" ]]; then
+    printf "current trailing-space divergence\n" >> "${repo}/${trailing_space_path}"
+  fi
+  if [[ "${selected_test}" == "07" && -n "${newline_path}" ]]; then
+    printf "current newline divergence\n" >> "${repo}/${newline_path}"
+  fi
+  if [[ "${selected_test}" == "07" && -n "${tab_path}" ]]; then
+    printf "current tab divergence\n" >> "${repo}/${tab_path}"
+  fi
+  if [[ "${selected_test}" == "04" ]]; then
+    printf "browse partial staged line\n" >> "${repo}/browse-partial.txt"
+    git -C "${repo}" add browse-partial.txt
+    printf "browse partial unstaged line\n" >> "${repo}/browse-partial.txt"
+  fi
 
   for i in $(seq 1 240); do
     printf "diverged line %03d\n" "${i}" >> "${repo}/000-scroll-target.txt"
@@ -319,6 +410,21 @@ git_snapshot_ui_prepare_general_ui_suite() {
   if [[ "${selected_test}" == "08" ]]; then
     rm -f "${repo}/missing-preview.txt"
     rm -rf "${repo}/modules/missing-sub"
+    staged_sub_head_sha="$(git -C "${repo}" rev-parse HEAD:modules/staged-sub)"
+    for i in $(seq 1 "${clean_sub_advance_count}"); do
+      printf "clean submodule advanced %02d\n" "${i}" >> "${clean_sub_repo}/clean-sub.txt"
+      git -C "${clean_sub_repo}" add clean-sub.txt
+      git -C "${clean_sub_repo}" commit -m "advance clean submodule ${i}" >/dev/null
+    done
+    clean_sub_advanced_sha="$(git -C "${clean_sub_repo}" rev-parse HEAD)"
+    git -C "${repo}/modules/clean-sub" fetch >/dev/null
+    git -C "${repo}/modules/clean-sub" checkout "${clean_sub_advanced_sha}" >/dev/null 2>&1
+    git -C "${repo}/modules/staged-sub" fetch >/dev/null
+    git -C "${repo}/modules/staged-sub" checkout "${clean_sub_advanced_sha}" >/dev/null 2>&1
+    git -C "${repo}" add modules/staged-sub
+    git -C "${repo}/modules/staged-sub" checkout "${staged_sub_head_sha}" >/dev/null 2>&1
+  elif [[ "${selected_test}" == "09" || "${selected_test}" == "10" ]]; then
+    rm -f "${repo}/missing-preview.txt"
     for i in $(seq 1 "${clean_sub_advance_count}"); do
       printf "clean submodule advanced %02d\n" "${i}" >> "${clean_sub_repo}/clean-sub.txt"
       git -C "${clean_sub_repo}" add clean-sub.txt
@@ -334,6 +440,36 @@ git_snapshot_ui_prepare_general_ui_suite() {
     git -C "${repo}" checkout -b "${malicious_branch}" >/dev/null
   fi
 
+  if [[ "${selected_test}" == "13" ]]; then
+    config_file="${repo}/.git-snapshot.config"
+    config_port_start="$(git_snapshot_ui_find_free_loopback_port)"
+    config_port_count="5"
+    cat > "${config_file}" <<EOF
+[gui "edit"]
+tool = code
+
+[gui "external-diff"]
+tool = code
+candidates = code,opendiff,kdiff3,meld,bcompare
+
+[gui "compare"]
+base = snapshot
+
+[browse]
+jobs = 2
+
+[compare]
+jobs = 2
+
+[gui "snapshots"]
+show-auto = true
+
+[gui "server"]
+port-start = ${config_port_start}
+port-count = ${config_port_count}
+EOF
+  fi
+
   gui_log_file="${runtime_dir}/gui-server.log"
   (
     cd "${repo}"
@@ -343,6 +479,8 @@ git_snapshot_ui_prepare_general_ui_suite() {
     if [[ "${run_mode}" != "manual" ]]; then
       external_diff_log="${runtime_dir}/external-diff.log"
       external_diff_spawn_log="${runtime_dir}/external-diff-spawn.log"
+      editor_log="${runtime_dir}/editor.log"
+      editor_spawn_log="${runtime_dir}/editor-spawn.log"
       fake_bin_dir="${runtime_dir}/fake-bin"
       if [[ "${selected_test}" == "03" ]]; then
         git_snapshot_ui_write_fake_auto_detect_tools "${runtime_dir}" "${external_diff_log}"
@@ -363,6 +501,13 @@ git_snapshot_ui_prepare_general_ui_suite() {
         unset GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_COMMAND_TEMPLATE
         unset GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_CANDIDATES
         unset GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_TOOL
+      elif [[ "${selected_test}" == "13" ]]; then
+        external_diff_tool="code"
+        git_snapshot_ui_write_fake_code_gui_tool "${fake_bin_dir}" "${editor_log}" "${external_diff_log}"
+        unset GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_TOOL
+        unset GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_COMMAND_TEMPLATE
+        unset GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_CANDIDATES
+        unset GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_TOOL
       else
         external_diff_tool="fake-tool"
         git_snapshot_ui_write_fake_external_diff_tool "${runtime_dir}" "${external_diff_log}"
@@ -370,9 +515,42 @@ git_snapshot_ui_prepare_general_ui_suite() {
         unset GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_CANDIDATES
         export GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_TOOL="${external_diff_tool}"
       fi
+      if [[ "${selected_test}" == "09" ]]; then
+        editor_tool="fake-editor"
+        editor_command_template='fake-editor --goto "$FILE"'
+        git_snapshot_ui_write_fake_named_external_diff_tool "${fake_bin_dir}" "${editor_tool}" "${editor_log}"
+        export GIT_SNAPSHOT_GUI_EDITOR_COMMAND_TEMPLATE="${editor_command_template}"
+      elif [[ "${selected_test}" == "13" ]]; then
+        editor_tool="code"
+        editor_command_template=""
+        unset GIT_SNAPSHOT_GUI_EDITOR_COMMAND_TEMPLATE
+      elif [[ "${selected_test}" == "10" ]]; then
+        case "$(uname -s)" in
+          Darwin)
+            editor_fallback_command="open"
+            ;;
+          Linux)
+            editor_fallback_command="xdg-open"
+            ;;
+          *)
+            editor_fallback_command=""
+            ;;
+        esac
+        editor_tool="${editor_fallback_command}"
+        editor_command_template=""
+        unset GIT_SNAPSHOT_GUI_EDITOR_COMMAND_TEMPLATE
+        if [[ -n "${editor_fallback_command}" ]]; then
+          git_snapshot_ui_write_fake_named_external_diff_tool "${fake_bin_dir}" "${editor_fallback_command}" "${editor_log}"
+        fi
+      else
+        editor_command_template=""
+        unset GIT_SNAPSHOT_GUI_EDITOR_COMMAND_TEMPLATE
+      fi
       export GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_SPAWN_LOG="${external_diff_spawn_log}"
+      export GIT_SNAPSHOT_GUI_TEST_EDITOR_SPAWN_LOG="${editor_spawn_log}"
       export PATH="${fake_bin_dir}:${PATH}"
       unset GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_LOG
+      unset GIT_SNAPSHOT_GUI_TEST_EDITOR_LOG
       if [[ "${selected_test}" != "06" ]]; then
         unset GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_TOOL
       fi
@@ -395,6 +573,10 @@ git_snapshot_ui_prepare_general_ui_suite() {
         unset GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_SPAWN_LOG
         external_diff_command_template=""
       fi
+      editor_command_template=""
+      unset GIT_SNAPSHOT_GUI_EDITOR_COMMAND_TEMPLATE
+      unset GIT_SNAPSHOT_GUI_TEST_EDITOR_LOG
+      unset GIT_SNAPSHOT_GUI_TEST_EDITOR_SPAWN_LOG
     fi
 
     if [[ "${selected_test}" == "02" ]]; then
@@ -405,12 +587,14 @@ git_snapshot_ui_prepare_general_ui_suite() {
 
     if [[ "${selected_test}" == "04" ]]; then
       export GIT_SNAPSHOT_GUI_TEST_COMPARE_DATA_DELAY_MS=400
+      export GIT_SNAPSHOT_GUI_TEST_REVIEW_DATA_DELAY_MS=900
     else
       unset GIT_SNAPSHOT_GUI_TEST_COMPARE_DATA_DELAY_MS
+      unset GIT_SNAPSHOT_GUI_TEST_REVIEW_DATA_DELAY_MS
     fi
     unset GIT_SNAPSHOT_GUI_TEST_INSPECT_DATA_DELAY_MS
 
-    git_snapshot_test_cmd compare "${snapshot_id}" --repo . --all --gui > "${gui_log_file}" 2>&1
+    git_snapshot_test_cmd compare "${snapshot_id}" --repo . --include-no-effect --gui > "${gui_log_file}" 2>&1
   ) &
   gui_pid=$!
   GIT_SNAPSHOT_UI_PREP_GUI_PID="${gui_pid}"
@@ -418,10 +602,16 @@ git_snapshot_ui_prepare_general_ui_suite() {
   external_diff_tool=""
   external_diff_log=""
   external_diff_spawn_log=""
+  editor_log=""
+  editor_spawn_log=""
+  editor_tool=""
+  editor_fallback_command=""
   fake_bin_dir=""
   if [[ "${run_mode}" != "manual" ]]; then
     external_diff_log="${runtime_dir}/external-diff.log"
     external_diff_spawn_log="${runtime_dir}/external-diff-spawn.log"
+    editor_log="${runtime_dir}/editor.log"
+    editor_spawn_log="${runtime_dir}/editor-spawn.log"
     fake_bin_dir="${runtime_dir}/fake-bin"
     if [[ "${selected_test}" == "01" ]]; then
       external_diff_tool="fake-template"
@@ -430,6 +620,27 @@ git_snapshot_ui_prepare_general_ui_suite() {
       external_diff_tool="definitely-missing-tool"
     elif [[ "${selected_test}" != "03" ]]; then
       external_diff_tool="fake-tool"
+    fi
+    if [[ "${selected_test}" == "09" ]]; then
+      editor_tool="fake-editor"
+      editor_command_template='fake-editor --goto "$FILE"'
+    elif [[ "${selected_test}" == "13" ]]; then
+      editor_tool="code"
+      editor_command_template=""
+    elif [[ "${selected_test}" == "10" ]]; then
+      case "$(uname -s)" in
+        Darwin)
+          editor_fallback_command="open"
+          ;;
+        Linux)
+          editor_fallback_command="xdg-open"
+          ;;
+        *)
+          editor_fallback_command=""
+          ;;
+      esac
+      editor_tool="${editor_fallback_command}"
+      editor_command_template=""
     fi
   elif [[ "${allow_real_external_diff}" != "1" && "${allow_real_external_diff}" != "true" ]]; then
     external_diff_tool="manual-noop-external-diff"
@@ -445,20 +656,32 @@ git_snapshot_ui_prepare_general_ui_suite() {
     GIT_SNAPSHOT_UI_TEST_RUNTIME_DIR "${runtime_dir}" \
     GIT_SNAPSHOT_UI_TEST_GUI_PID "${gui_pid}" \
     GIT_SNAPSHOT_UI_TEST_GUI_LOG_FILE "${gui_log_file}" \
+    GIT_SNAPSHOT_GUI_EDITOR_COMMAND_TEMPLATE "${editor_command_template}" \
     GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_TOOL "${external_diff_tool}" \
     GIT_SNAPSHOT_GUI_EXTERNAL_DIFF_COMMAND_TEMPLATE "${external_diff_command_template}" \
     GIT_SNAPSHOT_UI_TEST_PRIMARY_SNAPSHOT_ID "${snapshot_id}" \
+    GIT_SNAPSHOT_UI_TEST_PRIMARY_SNAPSHOT_ROOT "${snapshot_root}" \
+    GIT_SNAPSHOT_UI_TEST_PRIMARY_REPO_BUNDLE_DIR "${primary_repo_bundle_dir}" \
     GIT_SNAPSHOT_UI_TEST_OLDER_SNAPSHOT_ID "${older_snapshot_id}" \
     GIT_SNAPSHOT_UI_TEST_MALICIOUS_BRANCH "${malicious_branch}" \
     GIT_SNAPSHOT_UI_TEST_TRAILING_SPACE_PATH "${trailing_space_path}" \
+    GIT_SNAPSHOT_UI_TEST_NEWLINE_PATH "${newline_path}" \
+    GIT_SNAPSHOT_UI_TEST_TAB_PATH "${tab_path}" \
     GIT_SNAPSHOT_UI_TEST_MISSING_REPO_REL "modules/missing-sub" \
     GIT_SNAPSHOT_UI_TEST_MISSING_REPO_FILE "missing-sub.txt" \
     GIT_SNAPSHOT_UI_TEST_MISSING_REPO_ABS "${repo}/modules/missing-sub" \
     GIT_SNAPSHOT_UI_TEST_CLEAN_SUB_ADVANCE_COUNT "${clean_sub_advance_count}" \
+    GIT_SNAPSHOT_UI_TEST_EDITOR_TOOL "${editor_tool}" \
+    GIT_SNAPSHOT_UI_TEST_EDITOR_FALLBACK_COMMAND "${editor_fallback_command}" \
     GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_TOOL "${external_diff_tool}" \
     GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_LOG "${external_diff_log}" \
     GIT_SNAPSHOT_GUI_TEST_EXTERNAL_DIFF_SPAWN_LOG "${external_diff_spawn_log}" \
+    GIT_SNAPSHOT_GUI_TEST_EDITOR_LOG "${editor_log}" \
+    GIT_SNAPSHOT_GUI_TEST_EDITOR_SPAWN_LOG "${editor_spawn_log}" \
     GIT_SNAPSHOT_UI_TEST_FAKE_BIN_DIR "${fake_bin_dir}" \
+    GIT_SNAPSHOT_UI_TEST_CONFIG_FILE "${config_file}" \
+    GIT_SNAPSHOT_UI_TEST_CONFIG_PORT_START "${config_port_start}" \
+    GIT_SNAPSHOT_UI_TEST_CONFIG_PORT_COUNT "${config_port_count}" \
     GIT_SNAPSHOT_UI_TEST_SELECTED_TEST "${selected_test}" \
     GIT_SNAPSHOT_UI_TEST_RUN_MODE "${run_mode}"
   git_snapshot_ui_write_cleanup_script "${runtime_dir}/cleanup.bash" "${gui_pid}" "${TEST_SANDBOX}"

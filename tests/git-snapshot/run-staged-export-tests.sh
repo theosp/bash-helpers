@@ -32,6 +32,13 @@ trap cleanup EXIT
 
 git -C "${HELPERS_ROOT}" checkout-index -a -f --prefix="${staged_root}/"
 
+if [[ -z "${PLAYWRIGHT_BROWSERS_PATH:-}" ]]; then
+  playwright_cache_dir="${HELPERS_ROOT}/lib/git-snapshot/ui-tests/.ms-playwright"
+  if [[ -d "${playwright_cache_dir}" ]]; then
+    export PLAYWRIGHT_BROWSERS_PATH="${playwright_cache_dir}"
+  fi
+fi
+
 resolve_test_path() {
   local raw_path="$1"
   if [[ "${raw_path}" == */* ]]; then

@@ -11,7 +11,7 @@ done
 
 SCRIPT_DIR="$(cd -P "$(dirname "${SOURCE}")" && pwd)"
 TESTS_DIR="${SCRIPT_DIR}/tests"
-PLAYWRIGHT_BROWSERS_PATH="${SCRIPT_DIR}/.ms-playwright"
+PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH:-${SCRIPT_DIR}/.ms-playwright}"
 RUN_TESTS_ARTIFACTS_DIR="${SCRIPT_DIR}/.run-tests-artifacts"
 RUN_TESTS_CACHE_FILE="${SCRIPT_DIR}/.run-tests.cache"
 RUN_TESTS_CACHE_VERSION="1"
@@ -20,6 +20,7 @@ HOST_HOME="${HOME}"
 NODE_VERSION=""
 ACTIVE_RUNTIME_DIR=""
 ACTIVE_RUN_MODE="automated"
+PLAYWRIGHT_BROWSER_NAME="${GIT_SNAPSHOT_UI_TEST_BROWSER:-chromium}"
 TEST_CATEGORIES=()
 TEST_CATEGORY_DESCRIPTIONS=()
 MANUAL_CATEGORY_SELECTION=""
@@ -83,11 +84,21 @@ use_pinned_node() {
 setup_node() {
   use_pinned_node
   printf "Node:   %s\n" "$(node -v 2>/dev/null || echo "not found")"
+  printf "Browser: %s\n" "${PLAYWRIGHT_BROWSER_NAME}"
 }
 
 ensure_tooling() {
   mkdir -p "${RUN_TESTS_ARTIFACTS_DIR}"
   setup_node
+
+  case "${PLAYWRIGHT_BROWSER_NAME}" in
+    chromium|webkit|firefox)
+      ;;
+    *)
+      print_error "Unsupported Playwright browser: ${PLAYWRIGHT_BROWSER_NAME}"
+      return 1
+      ;;
+  esac
 
   if [[ ! -x "${SCRIPT_DIR}/node_modules/.bin/playwright" ]]; then
     (
@@ -100,12 +111,12 @@ ensure_tooling() {
     )
   fi
 
-  if ! find "${PLAYWRIGHT_BROWSERS_PATH}" -mindepth 1 -maxdepth 1 -type d -name 'chromium-*' | grep -q . 2>/dev/null; then
+  if ! find "${PLAYWRIGHT_BROWSERS_PATH}" -mindepth 1 -maxdepth 1 -type d -name "${PLAYWRIGHT_BROWSER_NAME}-*" | grep -q . 2>/dev/null; then
     (
       cd "${SCRIPT_DIR}"
       HOME="${HOST_HOME}" \
       PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH}" \
-      ./node_modules/.bin/playwright install chromium
+      ./node_modules/.bin/playwright install "${PLAYWRIGHT_BROWSER_NAME}"
     )
   fi
 }
@@ -591,6 +602,7 @@ run_category_tests() {
     cd "${SCRIPT_DIR}"
     use_pinned_node
     HOME="${HOST_HOME}" \
+    GIT_SNAPSHOT_UI_TEST_BROWSER="${PLAYWRIGHT_BROWSER_NAME}" \
     PLAYWRIGHT_BROWSERS_PATH="${PLAYWRIGHT_BROWSERS_PATH}" \
     ./node_modules/.bin/playwright test "${playwright_args[@]}"
   )

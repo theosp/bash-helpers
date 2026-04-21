@@ -56,6 +56,11 @@
   - Use `--name-only` for file-path focused output.
   - Use `--diff` for full tracked patch bodies.
   - Non-mutating.
+  - Porcelain rows:
+    - `inspect_target`: selected scope/summary row with `contract_version=2`
+    - `inspect_repo`: one row per repo with relation/apply-check/collision counters plus visible `file_count` / `lines_added` / `lines_removed`
+    - `inspect`: one row per selected category with captured `file_count` / `lines_added` / `lines_removed`
+    - `inspect_file`: one row per captured file, including `lines_added`, `lines_removed`, `display_kind`, and `display_label`
 
 - `git-snapshot restore-check <snapshot_id> [--repo <rel_path>] [--all-repos] [--details] [--files] [--limit <n>|--no-limit] [--porcelain]`
   - Checks default reject-mode restore compatibility against current tree.
@@ -65,6 +70,31 @@
     - `0`: all compared repos compatible
     - `3`: compatibility issues found
     - `1`: usage/runtime error
+
+- `git-snapshot review --repo <rel_path> ... [--base <ref>] [--repo-base <rel_path> <ref>] [--gui] [--porcelain]`
+  - Explicit selected-repo review mode for committed branch delta only.
+  - Per selected repo, review compares `merge-base(effective_base, HEAD) .. HEAD`.
+  - Default base is `master`.
+  - `--base <ref>` sets the default base for all selected repos.
+  - `--repo-base <rel_path> <ref>` overrides the default base for one selected repo.
+  - Base resolution policy:
+    - use the repo override when provided, otherwise the default base
+    - if the requested base resolves, use it directly
+    - if the requested base is missing and local `master` resolves, fall back to `master`
+    - if both are unavailable, emit a repo-level `baseline_missing` result for that repo
+  - Dirty working-tree state is reported as repo metadata only (`dirty=true|false`); it is not merged into review file rows.
+  - `--gui` launches the shared review browser with explicit repo selection, ordered presets, default-base picker, and per-repo base overrides.
+  - Porcelain rows:
+    - `review_target`: default base + selected/resolved/failed/fallback repo counts + `contract_version=1`
+    - `review_summary`: top-level shown file/line totals + fallback counts
+    - `review_repo`: current branch/head, requested/effective base fields, requested base source, base source, base resolution, base note, merge-base, dirty/has_delta, totals, and status/message
+    - `review_ref`: ref suggestions per root/selected repo for GUI base pickers
+    - `review_file`: one committed file row with line stats and simplified display metadata
+  - GUI/share-state behavior:
+    - selected repos remain ordered and are encoded in `review_repos`
+    - default base is encoded in `review_base`
+    - per-repo overrides are encoded in `review_repo_bases`
+    - named review presets are user-local and store ordered repos plus base settings
 
 - `git-snapshot compare [snapshot_id] [--repo <rel_path>] [--include-no-effect] [--diff] [--base <working-tree|snapshot>] [--gui] [--porcelain]`
   - Restore-effect compare engine over current dirty root-scope paths plus snapshot-captured paths.
@@ -91,7 +121,7 @@
     - runtime dependency is `node` (no Python/Tk dependency)
     - launches a local browser UI served on `127.0.0.1` by the command process
     - compare rows are cached per GUI session/view state; changing focused files does not rerun compare
-    - `Refresh` reloads the current compare view
+    - `Refresh` reloads the current view; `Reload Snapshots` also refreshes snapshot inventory
     - first-time per-file preview fetch shows a loading indicator while diff is prepared
     - external diff tool order: `meld`, then `kdiff3`, then `opendiff`, then `bcompare`, then `code` (`code` launches as `code --diff`)
     - external launch order is fixed as snapshot-left/current-right:
@@ -132,6 +162,66 @@
 
 - `git-snapshot delete <snapshot_id>`
   - Deletes snapshot data for the given id.
+
+- `git-snapshot browse [--repo <rel_path>] [--staged|--unstaged|--untracked|--submodules|--all] [--all-repos] [--gui] [--porcelain]`
+  - Live status browser against each repo `HEAD`.
+  - Staged rows compare `HEAD -> index`.
+  - Unstaged rows compare `index -> working tree`.
+  - Untracked rows compare `empty -> working tree`.
+  - Submodule rows summarize live gitlink/checkout drift relative to `HEAD`.
+  - `--gui` launches the shared browser in browse mode.
+  - Porcelain rows:
+    - `browse_target`: selected live-scope summary row with `contract_version=1`
+    - `browse_repo`: one row per repo with visible `file_count` / `lines_added` / `lines_removed`
+    - `browse`: one row per visible browse category with `file_count` / `lines_added` / `lines_removed`
+    - `browse_file`: one row per live file or submodule summary, including `lines_added`, `lines_removed`, `display_kind`, and `display_label`
+
+## Shared GUI Viewed State
+
+- Browse/compare/inspect/review file rows expose a GUI-only context menu with:
+  - `Mark as viewed`
+  - `Unmark as viewed`
+  - `Mark current version as viewed` when the row changed after being viewed
+- Browse/compare/inspect/review repo rows, and browse/inspect category rows, also expose GUI-only bulk viewed actions:
+  - `Mark all as viewed`
+  - `Unmark all as viewed`
+  - bulk actions apply only to the currently visible child file rows under that selection
+- Viewed state is GUI-local only; it is not encoded into CLI flags, URLs, or shared presets.
+- Viewed state persists under:
+  - `$HOME/git-snapshots/<root-folder>/.viewed-state.json`
+  - `$HOME/git-snapshots/<root-folder>/viewed-preview-blobs/`
+- The viewed-state document is keyed by the physical root repo path inside the JSON payload so different copies sharing the same folder name do not share marks accidentally.
+- GUI `api/data` file rows add these fields in place:
+  - `view_token`
+  - `view_state` (`unviewed`, `viewed`, `changed`)
+  - `view_marked_at`
+  - `view_blob_available`
+- When `view_state=changed` and `view_blob_available=true`, `api/preview` supports the GUI-only `since_viewed` preview variant:
+  - text rows return a unified diff between the stored viewed snapshot and the current preview
+  - non-text/submodule rows return a structured before/after summary
+- Oversized viewed-preview payloads are skipped instead of being persisted; override the cap for debugging with `GIT_SNAPSHOT_GUI_VIEWED_PREVIEW_MAX_BYTES=<bytes>`.
+
+## Shared GUI Diff Selection Actions
+
+- Selecting non-empty text fully inside approved preview-body content under `#diff` exposes a GUI-only selection menu with:
+  - `Copy`
+  - `Ask`
+- Allowed preview-body selection roots include:
+  - plain preview text bodies
+  - structured diff code cells
+  - aggregate preview body text
+  - submodule summary body text
+  - since-viewed summary body text
+- Headers, metadata, gutter-only selection, and selections crossing outside `#diff` fall back to the browser’s default context menu.
+- Structured diff selection may incidentally include gutters during drag selection, but copied/asked text excludes gutter numbers and preserves selected line breaks and diff markers.
+- `Ask` builds a GUI-only prompt from:
+  - the chosen instruction text
+  - the exact selected text in a fenced code block
+- Ask history is GUI-local only:
+  - stored in browser `localStorage`
+  - keyed by physical root repo path
+  - stores instruction text only, not selected diff snippets
+  - supports in-dropdown removal without confirmation
 
 ## Exactness semantics
 

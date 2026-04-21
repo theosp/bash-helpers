@@ -50,11 +50,18 @@ Follow this sequence and report each step.
 - Run: `git-snapshot inspect <snapshot_id>`.
 - Confirm captured content summary and per-repo stat details are present.
 - Run: `git-snapshot compare <snapshot_id>`.
-  - default compare output is unresolved-only
-  - use `--all` when you need resolved rows too
-  - use `--diff` when you need inline unified diffs for unresolved diverged files
+  - default compare output is restore-effect only
+  - use `--include-no-effect` when you need rows that already match the restore baseline too
+  - use `--diff` when you need inline unified diffs for diverged textual restore-effect rows
   - use `--gui` for visual browse/refresh and per-file patch stitching via external diff tools
   - compare is diagnostic and returns `0` on successful execution
+
+Review cross-repo branch deltas
+- Use `git-snapshot review` only when the user explicitly wants selected live repos compared against a configurable review base.
+- Default review base is `master`.
+- Use `--base <ref>` for a review-wide default and `--repo-base <repo> <ref>` for per-repo overrides.
+- Review is committed-delta only: it compares `merge-base(effective_base, HEAD) .. HEAD` and surfaces working-tree dirt only as repo metadata.
+- Prefer `--gui` when the user wants ordered selected repos, presets, or per-repo base controls in one shared browser view.
 
 3. Restore snapshot (only on explicit user restore intent)
 - Explain restore is destructive for tracked changes and untracked non-ignored files.
@@ -69,7 +76,8 @@ Follow this sequence and report each step.
 
 4. Post-restore verification
 - Re-run: `git-snapshot inspect <snapshot_id>`.
-- Re-run: `git-snapshot compare <snapshot_id> --all`.
+- Re-run: `git-snapshot compare <snapshot_id>`.
+- Use `git-snapshot compare <snapshot_id> --include-no-effect` when you need the full aligned row inventory after restore.
 - Check repo status/helper output and summarize whether restore matched expected state.
 
 ## Safety notes

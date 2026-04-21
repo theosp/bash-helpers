@@ -17,6 +17,14 @@ FUTURE
     display labels such as `no restore effect`, `mode change`,
     `binary change`, and `submodule change`
 
+* Redesign shared browser refresh semantics and harden compare correctness:
+  - `Refresh` now reloads the current view, while `Reload Snapshots` also
+    refreshes snapshot inventory
+  - align browser reload and toolbar refresh around prepared-view sync
+  - disable persistent compare cache by default; opt in with
+    `GIT_SNAPSHOT_COMPARE_CACHE=1`
+  - add compare-base cache-key fixes so GUI and CLI counts stay aligned
+
 v1.0.44 (2026-03-29)
 
 * Add physical-base path helper utilities for root containment,
@@ -36,6 +44,13 @@ v1.0.43 (2026-03-26)
   - `expandUserPath` expands `~` and `~/...` inputs for path-based helpers
 
 v1.0.42 (2026-03-18)
+
+* Add `browse` as the default shared `git-snapshot` browser mode:
+  - introduce `git-snapshot browse` with live `HEAD`-based porcelain/GUI rows
+  - make `git-snapshot gui` land in browse mode while keeping compare/inspect
+    direct launches intact
+  - keep browse state in the URL, support live staged/unstaged/untracked/
+    submodule previews, and allow creating snapshots from the browser
 
 * Refresh the shared `git-snapshot` browser UI diff preview with GitHub-style
   line gutters/colors and add a draggable, persisted navigator/diff split

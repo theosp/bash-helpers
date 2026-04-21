@@ -82,9 +82,19 @@ lib/git-snapshot/ui-tests/
 - Automated `01` coverage exercises the explicit external diff command-template override with `$SOURCE` / `$TARGET` placeholders so unusual launch shapes stay supported without opening a real app.
 - Automated `03` coverage exercises real tool auto-detection with fake `meld`, `kdiff3`, `opendiff`, `bcompare`, and `code` binaries on `PATH`, including the no-tool error path.
 - Automated `04` coverage exercises the shared-shell controls: mode switching, snapshot picking, and compare visibility auto-refresh.
+- `tests/git-snapshot/test-shared-gui-controls.sh` runs the `04` shared-controls coverage in grouped sub-runs so the largest GUI surface does not depend on one long-lived server process.
+- The grouped shared-controls wrapper self-validates its grep shards against the real `04` test titles before it runs, so title drift cannot silently drop coverage.
+- The grouped shared-controls wrapper also assigns each shard its own GUI port window by default. Override the base with `GIT_SNAPSHOT_UI_TEST_GROUP_PORT_START=<port>` if you need a different band while debugging.
+- The no-arg shared-controls wrapper also runs a focused WebKit diff-selection smoke after the Chromium shards, so the selected-text path is covered in both browser engines by default.
 - Automated `05` coverage exercises inspect-mode previews, category toggles, and clean-repo visibility via `all repos`.
 - Automated `06` coverage exercises invalid forced external-diff overrides and verifies the GUI stays up with an in-band API error.
 - Automated `07` coverage exercises compare/inspect API handling for trailing-space filenames.
+- Touch-adjacent manual spot checks for diff-selection actions live in `tests/manual/diff-selection-touch-checklist.md`.
+- A browser-console helper for Safari/trackpad manual verification lives in `tests/manual/diff-selection-safari-trackpad-helper.js`.
+- Set `GIT_SNAPSHOT_UI_TEST_BROWSER=webkit` to run focused diff-selection smoke coverage against Playwright WebKit instead of Chromium.
+- Set `PLAYWRIGHT_BROWSERS_PATH=/custom/cache/dir` if you want the runner to install and reuse Playwright browser bundles outside the default local `.ms-playwright` cache.
+- Set `GIT_SNAPSHOT_UI_TEST_STRICT_FIXTURE_RECOVERY=1` if you want the `04` shared-controls suite to fail whenever fixture lock-recovery or rollback paths were needed during the run.
+- Set `GIT_SNAPSHOT_UI_TEST_FIXTURE_RECOVERY_FAIL_THRESHOLD=<n>` if you want the grouped shared-controls wrapper to fail once the combined fixture-recovery total across shards exceeds a threshold, even when strict per-shard mode is off.
 - Manual mode supports interactive category selection with arrow keys or number input, remembers the last selected category, opens the shared GUI in your browser, and keeps the session alive until `Ctrl+C`.
 - Manual mode stubs external diff launching by default so test runs do not open real desktop diff tools.
 - Opt in to real external diff launching during manual runs with `GIT_SNAPSHOT_UI_TESTS_ALLOW_REAL_EXTERNAL_DIFF=1`.
