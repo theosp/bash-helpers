@@ -150,3 +150,27 @@ set -e
 assert_exit_code 3 "${restore_check_fail_porcelain_code}" "porcelain restore-check should return 3 on issues"
 assert_contains $'restore_check\tsnapshot_id='"${clean_snapshot_id}"$'\trepo=modules/sub1/modules/sub2' "${restore_check_fail_porcelain_output}" "porcelain restore-check should include missing repo row"
 assert_contains "has_issues=true" "${restore_check_fail_porcelain_output}" "porcelain restore-check should include has_issues marker"
+
+# Current-only dirty repos discovered after the snapshot should be reported because restore clears them.
+late_source_repo="${TEST_REPOS_ROOT}/late-submodule-source"
+git_snapshot_test_init_repo "${late_source_repo}"
+git_snapshot_test_commit_file "${late_source_repo}" "late.txt" "late-base" "seed late submodule"
+
+git -C "${root_repo}" reset --hard >/dev/null
+git -C "${root_repo}" clean -fd >/dev/null
+git -C "${root_repo}" -c protocol.file.allow=always submodule update --init --recursive >/dev/null
+git -C "${sub1}" reset --hard >/dev/null
+git -C "${sub1}" clean -fd >/dev/null
+git -C "${sub2}" reset --hard >/dev/null
+git -C "${sub2}" clean -fd >/dev/null
+git -C "${root_repo}" -c protocol.file.allow=always submodule add "${late_source_repo}" "modules/late-sub" >/dev/null
+printf "late-dirty\n" >> "${root_repo}/modules/late-sub/late.txt"
+
+set +e
+restore_check_current_only_output="$(cd "${root_repo}" && git_snapshot_test_cmd restore-check "${clean_snapshot_id}" --all-repos --files --porcelain 2>&1)"
+restore_check_current_only_code=$?
+set -e
+assert_exit_code 3 "${restore_check_current_only_code}" "restore-check should flag dirty current-only repos that restore would clear"
+assert_contains $'restore_check\tsnapshot_id='"${clean_snapshot_id}"$'\trepo=modules/late-sub\trepo_scope=current_only\trelation=current_only' "${restore_check_current_only_output}" "restore-check should expose current-only repo scope in porcelain"
+assert_contains "current_only=true" "${restore_check_current_only_output}" "restore-check should mark current-only repo rows explicitly"
+assert_contains $'restore_check_file\trepo=modules/late-sub\tcategory=current_unstaged\tfile=late.txt' "${restore_check_current_only_output}" "restore-check --files should list current dirty files for current-only repos"

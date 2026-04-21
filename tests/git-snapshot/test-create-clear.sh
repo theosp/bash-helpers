@@ -44,7 +44,7 @@ assert_file_not_exists "${root_repo}/new-root.txt" "root untracked should be rem
 assert_file_not_exists "${sub1}/new-sub1.txt" "sub1 untracked should be removed by clear"
 assert_file_not_exists "${sub2}/new-sub2.txt" "sub2 untracked should be removed by clear"
 
-compare_after_clear_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${snapshot_id}" --all --porcelain)"
+compare_after_clear_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${snapshot_id}" --include-no-effect --porcelain)"
 assert_eq "v3" "$(git_snapshot_test_extract_porcelain_field "${compare_after_clear_output}" "compare_summary" "engine")" "create --clear compare should use v3 engine"
 assert_ne "0" "$(git_snapshot_test_extract_porcelain_field "${compare_after_clear_output}" "compare_summary" "unresolved_total")" "create --clear compare should expose unresolved snapshot work"
 
@@ -60,5 +60,5 @@ restore_output="$(cd "${root_repo}" && git_snapshot_test_cmd restore "${snapshot
 assert_contains $'restore_summary\tsnapshot_id='"${snapshot_id}"$'\tmode=rollback\tresult=success' "${restore_output}" "create --clear snapshot should restore successfully"
 assert_contains "exit_code=0" "${restore_output}" "create --clear restore should return success exit code"
 
-compare_after_restore_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${snapshot_id}" --all --porcelain)"
+compare_after_restore_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${snapshot_id}" --include-no-effect --porcelain)"
 assert_eq "0" "$(git_snapshot_test_extract_porcelain_field "${compare_after_restore_output}" "compare_summary" "unresolved_total")" "create --clear compare should return to zero unresolved items after restore"

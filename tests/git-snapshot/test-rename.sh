@@ -9,6 +9,7 @@ source "${SCRIPT_DIR}/../helpers/assertions.bash"
 source "${SCRIPT_DIR}/../helpers/fixtures.bash"
 
 git_snapshot_test_setup_sandbox
+export GIT_SNAPSHOT_COMPARE_CACHE=1
 root_repo="$(git_snapshot_test_make_nested_fixture)"
 snapshot_root="$(git_snapshot_test_snapshot_root_for_repo "${root_repo}")"
 

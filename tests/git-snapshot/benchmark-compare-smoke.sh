@@ -47,9 +47,8 @@ set -e
 compare_elapsed_seconds="${SECONDS}"
 
 assert_exit_code 0 "${compare_code}" "benchmark compare run should execute successfully"
-assert_contains "Rows shown: all statuses" "${compare_output}" "benchmark compare should include all rows"
-assert_contains "Repos checked: 1 | snapshot files tracked: 120 | unresolved: 0 | resolved: 120" "${compare_output}" "benchmark compare should process all benchmark files"
-assert_contains "Compare: no unresolved snapshot work." "${compare_output}" "benchmark compare should report resolved state"
+assert_contains "Compare rows: effect=0 | shown=120 | lines=+0/-0 | repos=1" "${compare_output}" "benchmark compare should summarize the all-rows view"
+assert_contains "Compare: restore would not change any compared paths." "${compare_output}" "benchmark compare should report resolved state"
 
 SECONDS=0
 set +e
@@ -59,8 +58,8 @@ set -e
 compare_warm_elapsed_seconds="${SECONDS}"
 
 assert_exit_code 0 "${compare_warm_code}" "benchmark warm compare run should execute successfully"
-assert_contains "Rows shown: all statuses" "${compare_warm_output}" "warm benchmark compare should include all rows"
-assert_contains "Repos checked: 1 | snapshot files tracked: 120 | unresolved: 0 | resolved: 120" "${compare_warm_output}" "warm benchmark compare should process all benchmark files"
+assert_contains "Compare rows: effect=0 | shown=120 | lines=+0/-0 | repos=1" "${compare_warm_output}" "warm benchmark compare should summarize the all-rows view"
+assert_contains "Compare: restore would not change any compared paths." "${compare_warm_output}" "warm benchmark compare should report no restore-effect rows"
 
 max_seconds="${GIT_SNAPSHOT_PERF_MAX_SECONDS:-20}"
 if (( compare_elapsed_seconds > max_seconds )); then
@@ -89,9 +88,8 @@ set -e
 compare_unresolved_elapsed_seconds="${SECONDS}"
 
 assert_exit_code 0 "${compare_unresolved_code}" "benchmark compare unresolved run should execute successfully"
-assert_contains "Rows shown: unresolved only" "${compare_unresolved_output}" "benchmark unresolved compare should keep default visibility"
-assert_contains "Repos checked: 1 | snapshot files tracked: 120 | unresolved: 120 | resolved: 0" "${compare_unresolved_output}" "benchmark unresolved compare should classify all files as unresolved"
-assert_contains "Compare: unresolved snapshot work remains." "${compare_unresolved_output}" "benchmark unresolved compare should report unresolved state"
+assert_contains "Compare rows: effect=120 | lines=" "${compare_unresolved_output}" "benchmark unresolved compare should summarize restore-effect rows"
+assert_contains "Compare: restore would change paths in the current workspace." "${compare_unresolved_output}" "benchmark unresolved compare should report restore-effect state"
 
 SECONDS=0
 set +e
@@ -101,8 +99,7 @@ set -e
 compare_unresolved_warm_elapsed_seconds="${SECONDS}"
 
 assert_exit_code 0 "${compare_unresolved_warm_code}" "benchmark unresolved warm compare run should execute successfully"
-assert_contains "Rows shown: unresolved only" "${compare_unresolved_warm_output}" "benchmark unresolved warm compare should keep default visibility"
-assert_contains "Repos checked: 1 | snapshot files tracked: 120 | unresolved: 120 | resolved: 0" "${compare_unresolved_warm_output}" "benchmark unresolved warm compare should classify all files as unresolved"
+assert_contains "Compare rows: effect=120 | lines=" "${compare_unresolved_warm_output}" "benchmark unresolved warm compare should summarize restore-effect rows"
 
 max_seconds_unresolved="${GIT_SNAPSHOT_PERF_MAX_SECONDS_UNRESOLVED:-${max_seconds}}"
 if (( compare_unresolved_elapsed_seconds > max_seconds_unresolved )); then

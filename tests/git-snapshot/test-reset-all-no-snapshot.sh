@@ -56,11 +56,11 @@ if [[ -d "${snapshot_root}" ]]; then
   assert_eq "${snapshot_count_before_no_snapshot}" "${snapshot_count}" "reset-all --no-snapshot should not create any additional snapshots"
 fi
 
-compare_after_reset_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${auto_snapshot_id}" --all --porcelain)"
+compare_after_reset_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${auto_snapshot_id}" --include-no-effect --porcelain)"
 assert_ne "0" "$(git_snapshot_test_extract_porcelain_field "${compare_after_reset_output}" "compare_summary" "unresolved_total")" "no-snapshot clear should leave saved auto snapshot work unresolved"
 
 restore_after_no_snapshot_output="$(cd "${root_repo}" && git_snapshot_test_cmd restore "${auto_snapshot_id}" --on-conflict rollback --porcelain)"
 assert_contains $'restore_summary\tsnapshot_id='"${auto_snapshot_id}"$'\tmode=rollback\tresult=success' "${restore_after_no_snapshot_output}" "saved auto snapshot should restore successfully after no-snapshot reset"
 
-compare_after_restore_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${auto_snapshot_id}" --all --porcelain)"
+compare_after_restore_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${auto_snapshot_id}" --include-no-effect --porcelain)"
 assert_eq "0" "$(git_snapshot_test_extract_porcelain_field "${compare_after_restore_output}" "compare_summary" "unresolved_total")" "saved auto snapshot compare should return to zero unresolved items after restore"

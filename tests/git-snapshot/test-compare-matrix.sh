@@ -21,7 +21,7 @@ assert_eq "matrix-missing-path" "${missing_snapshot_id}" "missing-path snapshot 
 rm -f "${repo_missing_case}/ghost.txt"
 
 missing_compare_output="$(cd "${repo_missing_case}" && git_snapshot_test_cmd compare "${missing_snapshot_id}" --repo .)"
-assert_contains "ghost.txt [unresolved_missing]" "${missing_compare_output}" "missing untracked target should be unresolved_missing"
+assert_contains "ghost.txt (+0/-1)" "${missing_compare_output}" "missing untracked target should surface as a textual restore-effect row"
 
 # 2) Deletion-target matrix: resolved_uncommitted -> resolved_committed -> unresolved_diverged.
 repo_delete_case="${TEST_REPOS_ROOT}/delete-case"
@@ -33,21 +33,21 @@ delete_create_output="$(cd "${repo_delete_case}" && git_snapshot_test_cmd create
 delete_snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${delete_create_output}")"
 assert_eq "matrix-delete-target" "${delete_snapshot_id}" "delete-target snapshot id should be preserved"
 
-delete_uncommitted_output="$(cd "${repo_delete_case}" && git_snapshot_test_cmd compare "${delete_snapshot_id}" --repo . --all)"
-assert_contains "delete-me.txt [resolved_uncommitted]" "${delete_uncommitted_output}" "staged deletion should classify as resolved_uncommitted"
+delete_uncommitted_output="$(cd "${repo_delete_case}" && git_snapshot_test_cmd compare "${delete_snapshot_id}" --repo . --include-no-effect)"
+assert_contains "delete-me.txt [no restore effect]" "${delete_uncommitted_output}" "staged deletion should surface as no-effect"
 
 git -C "${repo_delete_case}" commit -m "commit delete target" >/dev/null
-delete_committed_output="$(cd "${repo_delete_case}" && git_snapshot_test_cmd compare "${delete_snapshot_id}" --repo . --all)"
-assert_contains "delete-me.txt [resolved_committed]" "${delete_committed_output}" "committed deletion should classify as resolved_committed"
+delete_committed_output="$(cd "${repo_delete_case}" && git_snapshot_test_cmd compare "${delete_snapshot_id}" --repo . --include-no-effect)"
+assert_contains "delete-me.txt [no restore effect]" "${delete_committed_output}" "committed deletion should surface as no-effect"
 
 printf "reintroduced\n" > "${repo_delete_case}/delete-me.txt"
 delete_diverged_output="$(cd "${repo_delete_case}" && git_snapshot_test_cmd compare "${delete_snapshot_id}" --repo .)"
-assert_contains "delete-me.txt [unresolved_diverged]" "${delete_diverged_output}" "reintroduced file should diverge from deletion target"
+assert_contains "delete-me.txt (+1/-0)" "${delete_diverged_output}" "reintroduced file should surface as a textual restore-effect row"
 
 delete_diverged_porcelain="$(cd "${repo_delete_case}" && git_snapshot_test_cmd compare "${delete_snapshot_id}" --repo . --porcelain)"
 assert_contains $'compare_file\tsnapshot_id='"${delete_snapshot_id}"$'\trepo=.\tfile=delete-me.txt\tstatus=unresolved_diverged\treason=path still exists while snapshot target removes it' "${delete_diverged_porcelain}" "porcelain should expose unresolved_diverged status and reason"
-assert_contains $'compare_summary\tsnapshot_id='"${delete_snapshot_id}"$'\trepos_checked=1\tfiles_total=1\tresolved_committed=0\tresolved_uncommitted=0\tunresolved_missing=0\tunresolved_diverged=1\tunresolved_total=1\tshown_files=1\tengine=v3\telapsed_ms=' "${delete_diverged_porcelain}" "porcelain summary should expose v5 unresolved counters and telemetry"
-assert_contains $'\tcontract_version=5' "${delete_diverged_porcelain}" "porcelain summary should expose v5 contract version"
+assert_contains $'compare_summary\tsnapshot_id='"${delete_snapshot_id}"$'\trepos_checked=1\tfiles_total=1\tresolved_committed=0\tresolved_uncommitted=0\tunresolved_missing=0\tunresolved_diverged=1\tunresolved_total=1\tshown_files=1\tscope_both=1\tscope_snapshot_only=0\tscope_current_only=0\tengine=v3\telapsed_ms=' "${delete_diverged_porcelain}" "porcelain summary should expose v6 unresolved counters and telemetry"
+assert_contains $'\tcontract_version=8' "${delete_diverged_porcelain}" "porcelain summary should expose v8 contract version"
 
 # 3) Missing repo path should map snapshot files to unresolved_missing rows.
 nested_root="$(git_snapshot_test_make_nested_fixture)"
@@ -59,7 +59,7 @@ assert_eq "matrix-repo-missing" "${nested_snapshot_id}" "repo-missing snapshot i
 
 rm -rf "${nested_root}/modules/sub1"
 repo_missing_compare_output="$(cd "${nested_root}" && git_snapshot_test_cmd compare "${nested_snapshot_id}" --repo modules/sub1)"
-assert_contains "sub1.txt [unresolved_missing]" "${repo_missing_compare_output}" "missing repo path should surface unresolved_missing rows"
+assert_contains "sub1.txt [missing]" "${repo_missing_compare_output}" "missing repo path should surface as a missing restore-effect row"
 
 # 4) No-user-snapshot failure path remains explicit.
 repo_auto_only="${TEST_REPOS_ROOT}/auto-only"
@@ -87,7 +87,7 @@ assert_eq "matrix-rename-source" "${rename_snapshot_id}" "rename snapshot id sho
 
 printf "reintroduced old path\n" > "${repo_rename_case}/old.txt"
 rename_compare_output="$(cd "${repo_rename_case}" && git_snapshot_test_cmd compare "${rename_snapshot_id}" --repo .)"
-assert_contains "old.txt [unresolved_diverged]" "${rename_compare_output}" "reintroduced rename source should be unresolved_diverged"
+assert_contains "old.txt (+1/-0)" "${rename_compare_output}" "reintroduced rename source should surface as a textual restore-effect row"
 
 rename_porcelain_output="$(cd "${repo_rename_case}" && git_snapshot_test_cmd compare "${rename_snapshot_id}" --repo . --porcelain)"
 assert_contains $'compare_file\tsnapshot_id='"${rename_snapshot_id}"$'\trepo=.\tfile=old.txt\tstatus=unresolved_diverged\treason=path still exists while snapshot target removes it' "${rename_porcelain_output}" "porcelain should expose unresolved_diverged for reintroduced rename source"
@@ -109,8 +109,8 @@ gitlink_delete_create_output="$(cd "${gitlink_delete_repo}" && git_snapshot_test
 gitlink_delete_snapshot_id="$(git_snapshot_test_get_snapshot_id_from_create_output "${gitlink_delete_create_output}")"
 assert_eq "matrix-delete-gitlink" "${gitlink_delete_snapshot_id}" "gitlink deletion snapshot id should be preserved"
 
-gitlink_delete_compare_output="$(cd "${gitlink_delete_repo}" && git_snapshot_test_cmd compare "${gitlink_delete_snapshot_id}" --repo . --all)"
-assert_contains "modules/sub [resolved_uncommitted]" "${gitlink_delete_compare_output}" "gitlink deletion target should classify as resolved_uncommitted even if the repo directory still exists"
+gitlink_delete_compare_output="$(cd "${gitlink_delete_repo}" && git_snapshot_test_cmd compare "${gitlink_delete_snapshot_id}" --repo . --include-no-effect)"
+assert_contains "modules/sub [no restore effect]" "${gitlink_delete_compare_output}" "gitlink deletion target should surface as no-effect even if the repo directory still exists"
 
-gitlink_delete_porcelain_output="$(cd "${gitlink_delete_repo}" && git_snapshot_test_cmd compare "${gitlink_delete_snapshot_id}" --repo . --all --porcelain)"
+gitlink_delete_porcelain_output="$(cd "${gitlink_delete_repo}" && git_snapshot_test_cmd compare "${gitlink_delete_snapshot_id}" --repo . --include-no-effect --porcelain)"
 assert_contains $'compare_file\tsnapshot_id='"${gitlink_delete_snapshot_id}"$'\trepo=.\tfile=modules/sub\tstatus=resolved_uncommitted\treason=snapshot target removes this path and working tree matches' "${gitlink_delete_porcelain_output}" "porcelain should preserve resolved_uncommitted semantics for gitlink deletion targets"

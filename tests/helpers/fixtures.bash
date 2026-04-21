@@ -41,6 +41,100 @@ git_snapshot_test_cmd() {
   "${GIT_SNAPSHOT_BIN}" "$@"
 }
 
+git_snapshot_test_find_available_locale() {
+  local available="$1"
+  shift
+
+  local candidate
+  for candidate in "$@"; do
+    [[ -z "${candidate}" ]] && continue
+    if printf "%s\n" "${available}" | grep -Fx "${candidate}" >/dev/null 2>&1; then
+      printf "%s\n" "${candidate}"
+      return 0
+    fi
+  done
+  return 1
+}
+
+git_snapshot_test_hostile_collate_locale() {
+  if [[ -n "${GIT_SNAPSHOT_TEST_HOSTILE_COLLATE_LOCALE:-}" ]]; then
+    printf "%s\n" "${GIT_SNAPSHOT_TEST_HOSTILE_COLLATE_LOCALE}"
+    return 0
+  fi
+
+  local available fallback
+  available="$(locale -a 2>/dev/null || true)"
+  GIT_SNAPSHOT_TEST_HOSTILE_COLLATE_LOCALE="$(
+    git_snapshot_test_find_available_locale "${available}" \
+      "en_GB.UTF-8" \
+      "en_GB.utf8" \
+      "en_GB.utf-8" \
+      "en_US.UTF-8" \
+      "en_US.utf8" \
+      "en_US.utf-8" \
+      "nl_NL.UTF-8" \
+      "sv_SE.UTF-8" \
+      "de_DE.UTF-8" \
+      || true
+  )"
+  if [[ -z "${GIT_SNAPSHOT_TEST_HOSTILE_COLLATE_LOCALE}" ]]; then
+    fallback="$(printf "%s\n" "${available}" | awk 'BEGIN { IGNORECASE = 1 } $0 !~ /^(C|POSIX)(\.|$)/ && $0 ~ /(UTF-8|UTF8)/ { print; exit }')"
+    GIT_SNAPSHOT_TEST_HOSTILE_COLLATE_LOCALE="${fallback}"
+  fi
+  if [[ -z "${GIT_SNAPSHOT_TEST_HOSTILE_COLLATE_LOCALE}" ]]; then
+    fail "Expected at least one non-C locale for compare locale regression tests."
+  fi
+  printf "%s\n" "${GIT_SNAPSHOT_TEST_HOSTILE_COLLATE_LOCALE}"
+}
+
+git_snapshot_test_hostile_ctype_locale() {
+  if [[ -n "${GIT_SNAPSHOT_TEST_HOSTILE_CTYPE_LOCALE:-}" ]]; then
+    printf "%s\n" "${GIT_SNAPSHOT_TEST_HOSTILE_CTYPE_LOCALE}"
+    return 0
+  fi
+
+  local available preferred
+  available="$(locale -a 2>/dev/null || true)"
+  preferred="$(
+    git_snapshot_test_find_available_locale "${available}" \
+      "he_IL.UTF-8" \
+      "he_IL.utf8" \
+      "he_IL.utf-8" \
+      "fa_IR.UTF-8" \
+      "fa_IR.utf8" \
+      "fa_IR.utf-8" \
+      "en_US.UTF-8" \
+      "en_US.utf8" \
+      "en_US.utf-8" \
+      || true
+  )"
+  if [[ -z "${preferred}" ]]; then
+    preferred="$(git_snapshot_test_hostile_collate_locale)"
+  fi
+  GIT_SNAPSHOT_TEST_HOSTILE_CTYPE_LOCALE="${preferred}"
+  printf "%s\n" "${GIT_SNAPSHOT_TEST_HOSTILE_CTYPE_LOCALE}"
+}
+
+git_snapshot_test_cmd_hostile_locale() {
+  if [[ -z "${GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX:-}" ]]; then
+    printf "test helper misuse: missing GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX\n" >&2
+    return 1
+  fi
+
+  local collate_locale ctype_locale
+  collate_locale="$(git_snapshot_test_hostile_collate_locale)"
+  ctype_locale="$(git_snapshot_test_hostile_ctype_locale)"
+
+  env -u LC_ALL \
+    HOME="${TEST_HOME}" \
+    NVM_DIR="${NVM_DIR:-${GIT_SNAPSHOT_TEST_HOST_NVM_DIR}}" \
+    GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX="${GIT_SNAPSHOT_ENFORCE_ROOT_PREFIX}" \
+    LANG="${collate_locale}" \
+    LC_COLLATE="${collate_locale}" \
+    LC_CTYPE="${ctype_locale}" \
+    "${GIT_SNAPSHOT_BIN}" "$@"
+}
+
 git_snapshot_test_init_repo() {
   local repo_path="$1"
 

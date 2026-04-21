@@ -66,7 +66,7 @@ list_porcelain_output="$(cd "${root_repo}" && git_snapshot_test_cmd list --inclu
 assert_contains $'snapshot\tid='"${auto_snapshot_id}"$'\t' "${list_porcelain_output}" "include-auto porcelain should include reset-all auto snapshot"
 assert_contains "origin=auto" "${list_porcelain_output}" "include-auto porcelain should mark reset-all snapshot origin=auto"
 
-default_compare_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare --all --porcelain)"
+default_compare_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare --include-no-effect --porcelain)"
 assert_contains $'compare_target\tselected_snapshot_id='"${user_snapshot_id}"$'\tselection_mode=latest-user-default\tsnapshot_origin=user' "${default_compare_output}" "no-id compare should still prefer the latest user snapshot over newer auto snapshots"
 
 set +e
@@ -81,5 +81,5 @@ restore_output="$(cd "${root_repo}" && git_snapshot_test_cmd restore "${auto_sna
 assert_contains $'restore_summary\tsnapshot_id='"${auto_snapshot_id}"$'\tmode=rollback\tresult=success' "${restore_output}" "reset-all auto snapshot should restore successfully"
 assert_contains "exit_code=0" "${restore_output}" "reset-all auto snapshot restore should return success exit code"
 
-compare_after_restore_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${auto_snapshot_id}" --all --porcelain)"
+compare_after_restore_output="$(cd "${root_repo}" && git_snapshot_test_cmd compare "${auto_snapshot_id}" --include-no-effect --porcelain)"
 assert_eq "0" "$(git_snapshot_test_extract_porcelain_field "${compare_after_restore_output}" "compare_summary" "unresolved_total")" "auto snapshot compare should return to zero unresolved items after restore"
