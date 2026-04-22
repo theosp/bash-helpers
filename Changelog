@@ -1,5 +1,7 @@
 FUTURE
 
+v1.0.45 (2026-04-22)
+
 * Reframe `git-snapshot compare` around restore effect instead of
   unresolved-versus-resolved visibility:
   - default compare now shows only rows where `restore` would change the
@@ -17,13 +19,27 @@ FUTURE
     display labels such as `no restore effect`, `mode change`,
     `binary change`, and `submodule change`
 
-* Redesign shared browser refresh semantics and harden compare correctness:
-  - `Refresh` now reloads the current view, while `Reload Snapshots` also
-    refreshes snapshot inventory
-  - align browser reload and toolbar refresh around prepared-view sync
-  - disable persistent compare cache by default; opt in with
+* Expand the shared `git-snapshot` browser UI across browse, inspect, and
+  review flows:
+  - add shared browse/review GUI entry points, repo GUI config, aggregate
+    preview flows, and live-refresh-aware toolbar behavior
+  - add viewed-state actions plus diff-selection `Copy` / `Ask` workflows
+  - align refresh and compare-base handling so GUI and CLI counts stay in
+    sync while keeping persistent compare cache opt-in via
     `GIT_SNAPSHOT_COMPARE_CACHE=1`
-  - add compare-base cache-key fixes so GUI and CLI counts stay aligned
+
+* Harden compare and inspect regression coverage:
+  - add locale-stability, compare-matrix, path-shape, list-inspect, and
+    restore-check coverage for the newer compare contract
+  - extend browse/review/reset-all/config/playwright coverage around the
+    shared browser surface
+
+* Stabilize the browser test matrix:
+  - fix readiness, load-error, focus, autodetect-open, diff/splitter,
+    viewed-state, and live-refresh test seams in the shared Playwright
+    helpers and specs
+  - keep the full `tests/git-snapshot/run-all.sh` unittest + Playwright
+    matrix green end-to-end
 
 v1.0.44 (2026-03-29)
 
